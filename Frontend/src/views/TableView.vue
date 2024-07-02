@@ -1,0 +1,5430 @@
+<template>
+  <div class="table-view" :key="viewKey">
+
+    <!-- <div class="toolbar">
+      <button
+        class="button"
+        @click="transform_transpose()"
+        style="background-image: url('./icon/transpose.svg')"
+      ></button>
+      <div class="toolbar-label">Transpose</div>
+
+      <button
+        class="button"
+        @click="handle_transform_swap('FALL 2001', false)"
+        style="background-image: url('./icon/swap.svg')"
+      ></button>
+      <div class="toolbar-label">Swap</div>
+
+      <button
+        class="button"
+        @click="handle_transform_2stacked_button()"
+        style="background-image: url('./icon/stack.svg')"
+      ></button>
+      <div class="toolbar-label">ToStacked</div>
+
+      <el-dropdown
+        @command="handle_transform_2linear_dropdown"
+        placement="bottom"
+      >
+        <div class="drop-down-button">
+          <span class="el-dropdown-link">
+            <button
+              style="background-image: url('./icon/linear.svg')"
+              class="button">
+            </button>
+          </span>
+        </div>
+        <el-dropdown-menu slot="dropdown">
+          <el-dropdown-item command="sum">Sum</el-dropdown-item>
+          <el-dropdown-item command="avg">Average</el-dropdown-item>
+          <el-dropdown-item command="max">Max</el-dropdown-item>
+          <el-dropdown-item command="min">Min</el-dropdown-item>
+        </el-dropdown-menu>
+      </el-dropdown>
+      <div class="toolbar-label">ToLinear</div>
+
+      <button
+        class="button"
+        style="background-image: url('./icon/fold.svg')"
+        @click="transform_fold()"
+      ></button>
+      <div class="toolbar-label">Fold</div>
+
+      <button
+        class="button"
+        style="background-image: url('./icon/unfold.svg')"
+        @click="transform_unfold()"
+      ></button>
+      <div class="toolbar-label">Unfold</div>
+    
+    </div> -->
+
+    <div
+      class="table-view-svg-container"
+      id="table-view-svg-container"
+      @mousedown="handle_click_on_blank()"
+      @mouseup.stop="handle_mouse_up()"
+    >
+      <svg
+        class="table-view-svg" id="table-view-svg"
+        :height="markHeight + heightRangeList[heightRangeList.length - 1]"
+        :width="markWidth + widthRangeList[widthRangeList.length - 1]"
+        :transform="`translate(${((markWidth + widthRangeList[widthRangeList.length - 1]) * (zoomScale - 1)) / 2}, ${((markHeight + heightRangeList[heightRangeList.length - 1]) * (zoomScale - 1)) / 2}) scale(${zoomScale})`"
+        @mousemove="handle_mouse_move($event)"
+        @mouseup.stop="handle_mouse_up()"
+      >
+        <rect
+          x="0"
+          y="0"
+          :width="markWidth"
+          :height="markHeight"
+          class="table-mark"
+        />
+
+        <g v-if="isCurrFlat">
+          <g v-for="(item, i) in flatAttrName" :key="item.index">
+            <rect
+              class="header-table-cell"
+              :x="markWidth + widthRangeList[i]"
+              :y="markHeight"
+              :width="widthRangeList[i + 1] - widthRangeList[i]"
+              :height="rowHeightList[0]"
+            ></rect>
+            <text
+              class="table-cell-text"
+              :x="markWidth + widthRangeList[i] + textPaddingX"
+              :y="markHeight + textPaddingY"
+              :width="widthRangeList[i + 1] - widthRangeList[i]"
+              :height="rowHeightList[0]"
+            >
+              {{ flatAttrName[i] }}
+            </text>
+          </g>
+          <g
+            v-for="(row, rowindex) in flatData"
+            :key="row.index"
+            :transform="
+              'translate(' +
+              markWidth +
+              ',' +
+              (heightRangeList[rowindex + 1] + markHeight) +
+              ')'
+            "
+          >
+            <g v-for="(column, columnindex) in row" :key="column.index">
+              <rect
+                class="table-cell"
+                :x="widthRangeList[columnindex]"
+                y="0"
+                :width="
+                  widthRangeList[columnindex + 1] - widthRangeList[columnindex]
+                "
+                :height="rowHeightList[rowindex + 1]"
+              ></rect>
+              <text
+                v-if="flatData[rowindex][columnindex] != 'None'"
+                class="table-cell-text"
+                :x="widthRangeList[columnindex] + textPaddingX"
+                :y="textPaddingY"
+              >
+                {{ flatData[rowindex][columnindex] }}
+              </text>
+            </g>
+          </g>
+        </g>
+
+       
+
+        <!-- cell after choosing header-->
+        <g v-if="!isCurrFlat">
+          <!-- column header-->
+          <g v-if="headerFixedFlag.column">
+            <g v-for="(item, i) in num2header" :key="'col-header-group-' + i">
+              <g
+                v-if="
+                  !headerDistribution.get(item[1].value).isRowHeader &&
+                  item[1].times < headerDistribution.get(item[1].value).count
+                "
+                :id="'column-header-' + i"
+                :key="'column-header-' + i"
+                @mousedown.stop="
+                  before_header_interaction(
+                    'column-header-' + i,
+                    false,
+                    item[1].value,
+                    item[1].times,
+                    headerDistribution.get(item[1].value).layer
+                  )
+                "
+              >
+                <rect
+                  class="header-table-cell"
+                  style="fill: rgb(245, 248, 250); stroke: lightslategrey; stroke-width: 0.2px; cursor: cell;"
+                  :key="'rect-' + i"
+                  :x="
+                    cal_column_header_position(item[1].value, item[1].times).x
+                  "
+                  :y="
+                    cal_column_header_position(item[1].value, item[1].times).y
+                  "
+                  :width="
+                    cal_column_header_position(item[1].value, item[1].times)
+                      .width
+                  "
+                  :height="
+                    cal_column_header_position(item[1].value, item[1].times)
+                      .height
+                  "
+                ></rect>
+                <foreignObject 
+                class="table-cell-text"
+                :key="'text-' + i"
+                :x="
+                    cal_column_header_position(item[1].value, item[1].times).x
+                  "
+                  :y="
+                    cal_column_header_position(item[1].value, item[1].times).y + 5
+                  "
+                  :width="
+                    cal_column_header_position(item[1].value, item[1].times)
+                      .width
+                  "
+                  :height="
+                    cal_column_header_position(item[1].value, item[1].times)
+                      .height
+                  " style="overflow: hidden;
+                        white-space: normal;
+                        text-overflow: clip;
+                        /* word-wrap: break-word; */
+                        ">
+                  <!-- <body xmlns="http://www.w3.org/1999/xhtml"> -->
+                    <!-- <p>这是一段很长很长很长很长很长很长很长很长很长很长很长很长的文字</p> -->
+                    {{ item[1].value[0] == "&" ? "" : item[1].value }}
+                    <!-- </body> -->
+                </foreignObject>
+                
+
+              </g>
+            </g>
+          </g>
+          <!-- row header-->
+          <g v-if="headerFixedFlag.row">
+            <g v-for="(item, i) in num2header" :key="item.index">
+              <g
+                v-if="
+                  headerDistribution.get(item[1].value).isRowHeader &&
+                  item[1].times < headerDistribution.get(item[1].value).count
+                "
+                :id="'row-header-' + i"
+                @mousedown.stop="
+                  before_header_interaction(
+                    'row-header-' + i,
+                    true,
+                    item[1].value,
+                    item[1].times,
+                    headerDistribution.get(item[1].value).layer
+                  )
+                "
+              >
+                <rect
+                  class="header-table-cell"
+                  style="fill: rgb(245, 248, 250); stroke: lightslategrey; stroke-width: 0.2px; cursor: cell;"
+                  :x="cal_row_header_position(item[1].value, item[1].times).x"
+                  :y="cal_row_header_position(item[1].value, item[1].times).y"
+                  :width="
+                    cal_row_header_position(item[1].value, item[1].times).width
+                  "
+                  :height="
+                    cal_row_header_position(item[1].value, item[1].times).height
+                  "
+                ></rect>
+                <!-- textPaddingX -->
+                <!-- textPaddingY -->
+                <foreignObject 
+                class="table-cell-text"
+                :key="'text-' + i"
+                  :x="
+                    cal_row_header_position(item[1].value, item[1].times).x +
+                    0
+                  "
+                  :y="
+                    cal_row_header_position(item[1].value, item[1].times).y +
+                    5
+                  "
+                  :width="
+                    cal_row_header_position(item[1].value, item[1].times).width
+                  "
+                  :height="
+                    cal_row_header_position(item[1].value, item[1].times).height
+                  " style="overflow: hidden;
+                        white-space: normal;
+                        text-overflow: clip;
+                        /* word-wrap: break-word; */
+                        ">
+                  <!-- <body xmlns="http://www.w3.org/1999/xhtml"> -->
+                    <!-- <p>这是一段很长很长很长很长很长很长很长很长很长很长很长很长的文字</p> -->
+                    {{ item[1].value[0] == "&" ? "" : item[1].value }}
+                    <!-- </body> -->
+                </foreignObject>
+
+              </g>
+            </g>
+          </g>
+          <!-- value cell -->
+          <g>
+            <!-- top-left corner -->
+            <rect
+              class="header-table-cell"
+              style="fill: rgb(245, 248, 250); stroke: lightslategrey; stroke-width: 0.2px; cursor: cell;"
+              :x="markWidth"
+              :y="markHeight"
+              :width="widthRangeList[headerRange.right + 1]"
+              :height="heightRangeList[headerRange.bottom + 1]"
+            ></rect>
+
+            <g v-for="item in num2seq" :key="item.index">
+              <rect
+                class="table-cell"
+                style="fill: white; stroke: lightslategrey; stroke-width: 0.2px; cursor: cell"
+                :x="
+                  markWidth +
+                  widthRangeList[cal_value_cell_position(item[1].seq).col]
+                "
+                :y="
+                  markHeight +
+                  heightRangeList[cal_value_cell_position(item[1].seq).row]
+                "
+                :width="
+                  widthRangeList[cal_value_cell_position(item[1].seq).col + 1] -
+                  widthRangeList[cal_value_cell_position(item[1].seq).col]
+                "
+                :height="
+                  rowHeightList[cal_value_cell_position(item[1].seq).row]
+                "
+              ></rect>
+              <text
+                class="table-cell-text"
+                :x="
+                  markWidth +
+                  widthRangeList[cal_value_cell_position(item[1].seq).col] +
+                  textPaddingX
+                "
+                :y="
+                  markHeight +
+                  heightRangeList[cal_value_cell_position(item[1].seq).row] +
+                  textPaddingY
+                "
+              >
+                {{ item[1].value }}
+              </text>
+            </g>
+          </g>
+        </g>
+
+        <!-- row mark -->
+        <g v-for="(row, rowindex) in rowHeightList" :key="row.index">
+          <!-- rowHeightList -->
+          <rect
+            :class="{
+              'chosen-table-mark':
+                selectByMark.row && isMarkSelected(rowindex, 'row'),
+              'selected-table-mark':
+                !selectByMark.row && isMarkSelected(rowindex, 'row'),
+              'hovered-table-mark':
+                (mouseOverMark.index == rowindex &&
+                  mouseOverMark.type == 'row') ||
+                (selectedMark.index == rowindex && selectedMark.type == 'row'),
+            }"
+            class="table-mark"
+            x="0"
+            :y="markHeightRangeList[rowindex] + markHeight"
+            :width="markWidth"
+            :height="
+              markHeightRangeList[rowindex + 1] - markHeightRangeList[rowindex]
+            "
+            @mousedown.stop="handle_mouse_down_mark(rowindex, 'row')"
+            @mouseover="handle_mouse_over_mark(rowindex, 'row')"
+            @mouseout="handle_mouse_out_mark()"
+          ></rect>
+          <text
+            :class="{
+              'chosen-table-mark-text':
+                selectByMark.row && isMarkSelected(rowindex, 'row'),
+              'selected-table-mark-text':
+                !selectByMark.row && isMarkSelected(rowindex, 'row'),
+            }"
+            class="table-mark-text"
+            :x="markWidth / 2"
+            :y="markHeightRangeList[rowindex] + markHeight + markTextPaddingY"
+            @mousedown.stop="handle_mouse_down_mark(rowindex, 'row')"
+            @mouseover="handle_mouse_over_mark(rowindex, 'row')"
+            @mouseout="handle_mouse_out_mark()"
+          >
+            {{ rowindex + 1 }}
+          </text>
+          <!-- row mark transparent line -->
+          <rect
+            class="row-mark-transparent-line"
+            x="0"
+            :y="
+              markHeightRangeList[rowindex + 1] +
+              markHeight -
+              markLinePadding / 2
+            "
+            :height="markLinePadding"
+            :width="markWidth"
+            @mousedown.stop="handle_mouse_down_mark_line(rowindex, 'row')"
+          ></rect>
+        </g>
+
+        <!-- column mark -->
+        <g v-for="(column, columnindex) in columnWidthList" :key="column.index">
+          <rect
+            :class="{
+              'chosen-table-mark':
+                selectByMark.column && isMarkSelected(columnindex, 'column'),
+              'selected-table-mark':
+                !selectByMark.column && isMarkSelected(columnindex, 'column'),
+              'hovered-table-mark':
+                (mouseOverMark.index == columnindex &&
+                  mouseOverMark.type == 'column') ||
+                (selectedMark.index == columnindex &&
+                  selectedMark.type == 'column'),
+            }"
+            class="table-mark"
+            :x="markWidthRangeList[columnindex] + markWidth"
+            y="0"
+            :width="
+              markWidthRangeList[columnindex + 1] -
+              markWidthRangeList[columnindex]
+            "
+            :height="markHeight"
+            @mousedown.stop="handle_mouse_down_mark(columnindex, 'column')"
+            @mouseover="handle_mouse_over_mark(columnindex, 'column')"
+            @mouseout="handle_mouse_out_mark()"
+          ></rect>
+          <text
+            :class="{
+              'hovered-table-mark-text':
+                (mouseOverMark.index == columnindex &&
+                  mouseOverMark.type == 'column') ||
+                (selectedMark.index == columnindex &&
+                  selectedMark.type == 'column'),
+              'selected-table-mark-text':
+                !selectByMark.column && isMarkSelected(columnindex, 'column'),
+              'chosen-table-mark-text':
+                selectByMark.column && isMarkSelected(columnindex, 'column'),
+            }"
+            class="table-mark-text"
+            :x="
+              markWidthRangeList[columnindex] +
+              markWidth +
+              markColumnWidthList[columnindex] / 2
+            "
+            :y="markTextPaddingY"
+            @mousedown.stop="handle_mouse_down_mark(columnindex, 'column')"
+            @mouseover="handle_mouse_over_mark(columnindex, 'column')"
+            @mouseout="handle_mouse_out_mark()"
+          >
+            {{ cal_column_mark(columnindex) }}
+          </text>
+          <!-- column mark transparent line -->
+          <rect
+            class="column-mark-transparent-line"
+            :x="
+              markWidthRangeList[columnindex + 1] +
+              markWidth -
+              markLinePadding / 2
+            "
+            y="0"
+            :width="markLinePadding"
+            :height="markHeight"
+            @mousedown.stop="handle_mouse_down_mark_line(columnindex, 'column')"
+          ></rect>
+        </g>
+
+        <!-- row mark highlight line -->
+        <line
+          class="highlight-line"
+          v-if="selectedArea.top != null"
+          :x1="markWidth"
+          :x2="markWidth"
+          :y1="heightRangeList[selectedArea.top] + markHeight"
+          :y2="heightRangeList[selectedArea.bottom + 1] + markHeight"
+        ></line>
+
+        <!-- column mark highlight line -->
+        <line
+          class="highlight-line"
+          v-if="selectedArea.top != null"
+          :x1="widthRangeList[selectedArea.left] + markWidth"
+          :x2="widthRangeList[selectedArea.right + 1] + markWidth"
+          :y1="markHeight"
+          :y2="markHeight"
+        ></line>
+
+        <g class="table-mark-long-line">
+          <!-- column mark long line -->
+          <line
+            v-if="mouseDownMarkLineState && mouseDownMarkLine.type == 'column'"
+            :x1="markWidth + markWidthRangeList[mouseDownMarkLine.index + 1]"
+            :x2="markWidth + markWidthRangeList[mouseDownMarkLine.index + 1]"
+            :y1="markHeight"
+            :y2="
+              markHeight + markHeightRangeList[markHeightRangeList.length - 1]
+            "
+          ></line>
+          <!-- row mark long line -->
+          <line
+            v-if="mouseDownMarkLineState && mouseDownMarkLine.type == 'row'"
+            :x1="markWidth"
+            :x2="markWidth + markWidthRangeList[markWidthRangeList.length - 1]"
+            :y1="markHeight + markHeightRangeList[mouseDownMarkLine.index + 1]"
+            :y2="markHeight + markHeightRangeList[mouseDownMarkLine.index + 1]"
+          ></line>
+        </g>
+
+        <g id="recommendation-area-container"></g>
+
+        <g id="hover-helper-container" />
+
+        <!-- transparent mask for choosing -->
+        <rect
+          id="transparent-mask-for-choosing"
+          :x="markWidth + widthRangeList[headerRange.right + 1]"
+          :y="markHeight + heightRangeList[headerRange.bottom + 1]"
+          :width="
+            widthRangeList[columnWidthList.length] -
+            widthRangeList[headerRange.right + 1]
+          "
+          :height="
+            heightRangeList[rowHeightList.length] -
+            heightRangeList[headerRange.bottom + 1]
+          "
+          @mousedown.stop="handle_mouse_down_mask($event)"
+        ></rect>
+
+        <!-- <g id="insight-marker-container" /> -->
+
+        <g id="vis-container" />
+
+        <g id="insight-marker-container" />
+
+        <g id="insight-marker-corner-container" />
+
+        <g id="insight-arrow-container" />
+
+        <g v-if="!isCurrFlat">
+          <!-- row header line -->
+          <line v-if="headerRange.right != null"
+            class="header-line"
+            style="stroke: rgb(43, 98, 134); stroke-width: 0.5px;"
+            :x1="markWidth + widthRangeList[headerRange.right + 1]"
+            :x2="markWidth + widthRangeList[headerRange.right + 1]"
+            :y1="markHeight"
+            :y2="markHeight + heightRangeList[heightRangeList.length - 1]"
+          ></line>
+          <!-- column header line -->
+          <line v-if="headerRange.bottom != null"
+            class="header-line"
+            style="stroke: rgb(43, 98, 134); stroke-width: 0.5px;"
+            :x1="markWidth"
+            :x2="markWidth + widthRangeList[widthRangeList.length - 1]"
+            :y1="markHeight + heightRangeList[headerRange.bottom + 1]"
+            :y2="markHeight + heightRangeList[headerRange.bottom + 1]"
+          ></line>
+        </g>
+
+        <!-- selected area -->
+        <rect
+          v-if="selectedArea.top != null"
+          class="selected-area"
+          style="stroke: steelblue; fill: rgb(186, 219, 228); fill-opacity: 20%; stroke-width: 1.5px;"
+          :x="markWidth + widthRangeList[selectedArea.left]"
+          :y="markHeight + heightRangeList[selectedArea.top]"
+          :width="
+            widthRangeList[selectedArea.right + 1] -
+            widthRangeList[selectedArea.left]
+          "
+          :height="
+            heightRangeList[selectedArea.bottom + 1] -
+            heightRangeList[selectedArea.top]
+          "
+          @mousedown.stop="handle_mouse_down_selected($event)"
+        ></rect>
+      </svg>
+    </div>
+  </div>
+</template>
+
+<script>
+import { mapState, mapMutations } from "vuex";
+import {
+  get_column_header,
+  cal_header_range,
+  get_row_header,
+  get_cell_sequence,
+} from "./table/CreateModel.js";
+import {
+  get_reference_node,
+  cal_recommendation_by_one_reference,
+  cal_recommendation_by_two_references,
+} from "./table/GetRecommendation.js";
+import {
+  get_unit_data_for_transmission,
+  get_data_for_transmission,
+  get_pos_for_transmission,
+  get_data_from_chosen,
+} from "./table/GetSendingData.js";
+import { parse_encoding_item } from "../utils/encodingItemParser"
+import { reduce } from "vega-lite/build/src/encoding";
+import { None } from 'vega';
+
+export default {
+  name: "TableView",
+  props: {},
+  data() {
+    // console.error('newwwwwwwwwwwww data');
+    return {
+      // cellWidth: 70,
+      // cellHeight: 30,
+      cellWidth: 70,
+      cellHeight: 27,
+      markWidth: 40,
+      markHeight: 30,
+      textPaddingX: 5,
+      textPaddingY: 20,
+      markTextPaddingY: 22,
+      markLinePadding: 8,
+      cellMin: 15,
+
+      selectedTabularData: null,
+      rowDistributionList: [], // Record the start and end of each cell for each row
+      dataValueList: [],
+
+      columnWidthList: [],
+      rowHeightList: [],
+      markColumnWidthList: [],
+      markRowHeightList: [],
+
+      widthRangeList: [],
+      heightRangeList: [],
+      markWidthRangeList: [],
+      markHeightRangeList: [],
+
+      widthChangeSignal: true,
+      heightChangeSignal: true,
+      markWidthChangeSignal: true,
+      markHeightChangeSignal: true,
+
+      selectedCell: { cstart: null, cend: null, rstart: null, rend: null },
+      selectedArea: { top: null, left: null, bottom: null, right: null },
+      selectedMark: { index: null, type: null },
+      selectedHeader: null,
+      selectedAreaForHoverOffset: { top: null, left: null },
+
+      mouseOverCell: {
+        row: null,
+        column: null,
+        cstart: null,
+        cend: null,
+        ccurrent: null,
+        rstart: null,
+        rend: null,
+        rcurrent: null,
+      },
+      mouseOverMark: { index: null, type: null },
+      mouseDownMarkLine: { index: null, type: null },
+
+      mouseDownState: false,
+      mouseDownMaskState: false,
+      mouseDownMarkState: false,
+      mouseDownMarkLineState: false,
+
+      selectByMark: { row: false, column: false },
+
+      headerFixedFlag: { column: false, row: false },
+      headerRange: { right: null, bottom: null },
+
+      colHeader: null,
+      rowHeader: null,
+      headerDistribution: null,
+      valueDistribution: null,
+      num2header: null,
+      header2num: null,
+      num2seq: null,
+      seq2num: null,
+      valueIndex: 0,
+      headerIndex: 0,
+      colHeaderIndex: 0, // column headers' indexes starts from 0
+      rowHeaderIndex: 100, // row headers' indexes starts from 100
+      newHeaderIndex: 200, // new headers' indexes starts from 200
+
+      isCurrFlat: false,
+      flatAttrName: null,
+      flatData: null,
+
+      hasTransposed: false,
+
+      visRerenderPrePos: { x: 0, y: 0 },
+      visRerenderAfterPos: { x: 0, y: 0 },
+
+      isChoosingUnit: false,
+      isRecommendState: false,
+
+      recommendData: [],
+      rowPriority: {name: [[], [], []], subtree: [[], [], []]},
+      colPriority: {name: [[], [], []], subtree: [[], [], []]},
+      rowType: "name",
+      colType: "name",
+      rowPriorityRange: [0, 1],
+      colPriorityRange: [0, 2],
+
+      recommendDataBoth: [[], [], [], [], []],
+      recommendDataRow: [[], [], []],
+      recommendDataCol: [[], [], []],
+      recommendDataTreeBoth: [[], [], [], [], []],
+      recommendDataTreeRow: [[], [], []],
+      recommendDataTreeCol: [[], [], []],
+      prioritySliderValue: [0, 2],
+      directionSelectValue: "column",
+      typeSelectValue: "name",
+
+      isZoomOut: false,
+      zoomScale: 1,
+      viewKey: 1,
+
+      RLEncodingList : [], 
+      currentAutoVisNumber: -1,  // 当前的渲染rl序列号
+      selectedAutoVisNumber: -1, // 用户选择的渲染rl序列号
+      currentFigIDList: [], // 当前创建的figid
+
+      insight_color_num: 0,
+    };
+  },
+
+  methods: {
+    ...mapMutations(["UPDATE_DISPLAY_MODE"]),
+    // handle_rl_num_change() {
+    //   console.log("handle_rl_num_change", this.currentAutoVisNumber, this.selectedAutoVisNumber, this.currentFigIDList.length);
+    //   if (this.currentAutoVisNumber == this.selectedAutoVisNumber) {return}
+      
+    //   else if (this.selectedAutoVisNumber < this.currentAutoVisNumber) {  //删除多余的
+    //     for (var i=this.selectedAutoVisNumber+1; i<this.currentFigIDList.length; i++) {
+    //       this.$bus.$emit("delete-rl-fig-id", this.currentFigIDList[i])  // 删除该figid对应的组
+    //       // todo删除对应的insight marker
+    //       d3.selectAll("#ins-marker-"+this.currentFigIDList[i]).remove()
+    //       // .style("display", "none");
+    //       // .style("display", "block");
+    //     }
+    //     this.currentFigIDList = this.currentFigIDList.slice(0, this.selectedAutoVisNumber+1)
+    //     this.currentAutoVisNumber = this.selectedAutoVisNumber
+    //   }
+    //   else {  // 创建新的
+    //     for (var i=this.currentAutoVisNumber+1; i<=this.selectedAutoVisNumber; i++) {
+    //       this.auto_visualize_data(i)
+    //     }
+    //     this.currentAutoVisNumber = this.selectedAutoVisNumber
+    //   }
+    // },
+    handle_rl_num_change() {
+      // hp修改版，改变可见性
+      // console.log("handle_rl_num_change", this.currentAutoVisNumber, this.selectedAutoVisNumber, this.currentFigIDList.length);
+      if (this.currentAutoVisNumber == this.selectedAutoVisNumber) {return}
+      
+      else if (this.selectedAutoVisNumber < this.currentAutoVisNumber) {  //删除多余的
+        for (var i=this.selectedAutoVisNumber+1; i<this.currentFigIDList.length; i++) {
+          // this.$bus.$emit("delete-rl-fig-id", this.currentFigIDList[i])  // 删除该figid对应的组
+          this.$bus.$emit("hidden-rl-fig-id", this.currentFigIDList[i])  // 删除该figid对应的组
+          // todo删除对应的insight marker
+          d3.selectAll("#ins-marker-"+this.currentFigIDList[i]).style("display", "none");
+          // .style("display", "none");
+          // .style("display", "block");
+        }
+        // this.currentFigIDList = this.currentFigIDList.slice(0, this.selectedAutoVisNumber+1)
+        this.currentAutoVisNumber = this.selectedAutoVisNumber
+      }
+      else {  // 创建新的
+        if (this.currentFigIDList.length <= this.selectedAutoVisNumber)
+          for (var i=this.currentAutoVisNumber+1; i<=this.selectedAutoVisNumber; i++){
+            this.auto_visualize_data(i)
+          }
+        else
+          for (var i=this.currentAutoVisNumber+1; i<=this.selectedAutoVisNumber; i++) {
+            // this.auto_visualize_data(i)
+            this.$bus.$emit("display-rl-fig-id", this.currentFigIDList[i])
+            d3.selectAll("#ins-marker-"+this.currentFigIDList[i]).style("display", "block");
+          }
+        this.currentAutoVisNumber = this.selectedAutoVisNumber
+      }
+    },
+    judge_merge(x1, y1, x2, y2, x3, y3, x4, y4){
+      if (Math.max(x1, x3) <= Math.min(x2, x4) && Math.max(y1, y3) <= Math.min(y2, y4))
+        return true;
+      return false;
+    },
+    update_list_and_fid (item, insightList, insight_is_user, insight_both_list) {
+      let new_rl_list = [];
+      let new_fid_list = [];
+      let new_insightList = [];
+      let new_insight_is_user = [];
+      let new_insight_both_list = [];
+
+      let cross_rl_list = [];
+      let cross_fid_list = [];
+      // let data = this.RLEncodingList;
+      console.log("update_list_and_fid", item, this.RLEncodingList, this.currentFigIDList.length, 
+                    insightList, insight_is_user, insight_both_list);
+      // for(var txt of data){
+      //   console.log("update_list_and_fid txt", txt);
+      // }
+      // for(var insight of data){
+      // for (const [index, insight] of insight_both_list.entries()) {
+      //   console.log("update_list_and_fid_item_hp_pos", item);
+      //   console.log("update_list_and_fid_insight_hp_pos", insight);
+      //   // for(var insight of txt.encoding){
+      //     let judge = this.judge_merge(item.hp_pos[0][0], item.hp_pos[1][0], item.hp_pos[0][1], item.hp_pos[1][1], insight.hp_pos[0][0], insight.hp_pos[1][0], insight.hp_pos[0][1], insight.hp_pos[1][1]);
+      //     // console.log("judge_merge before", judge, item.hp_pos[0][0], item.hp_pos[1][0], item.hp_pos[0][1], item.hp_pos[1][1], insight.hp_pos[0][0], insight.hp_pos[1][0], insight.hp_pos[0][1], insight.hp_pos[1][1]);
+      //     if (judge === false && !!insight.rec_list){
+      //       console.log("for_rec", insight);
+      //       for(var rec of insight.rec_list){
+      //         if (rec.length !== 5)
+      //           console.error("sothing in rec_list pos length")
+      //         else{
+      //           // if(this.judge_merge(hp_pos[0][0], hp_pos[1][0], hp_pos[0][1], hp_pos[1][0], rec[0], rec[2], rec[1], rec[3]))
+      //           //   console.log("judge_merge", hp_pos[0][0], hp_pos[1][0], hp_pos[0][1], hp_pos[1][0], rec[0], rec[2], rec[1], rec[3])
+      //           judge = this.judge_merge(item.hp_pos[0][0], item.hp_pos[1][0], item.hp_pos[0][1], item.hp_pos[1][1], rec[0], rec[2], rec[1], rec[3]);
+      //           // console.log("judge_merge after", judge, item.hp_pos, rec);
+      //           if(judge === true)
+      //             break;
+      //         }
+      //         // console.log("insight.rec_list", rec)
+      //       // }
+      //       }
+      //     }
+      //   if(judge === false){
+      //     new_rl_list.push(insight);
+      //     new_fid_list.push(this.currentFigIDList[index]);
+      //     // console.log("update_list_and_fid_insightinsight", insight);
+      //     new_insightList.push(insight.vis_type);
+      //     new_insight_is_user.push(false);
+          
+      //     let selectedArea = {"top":insight.hp_pos[0][0], "bottom":insight.hp_pos[0][1], "left":insight.hp_pos[1][0], "right":insight.hp_pos[1][1]}
+      //     let recommendArea = [];
+      //     if (insight.rec_list != null)
+      //         for (var rec of insight.rec_list){
+      //             recommendArea.push({"top":rec[0], "bottom":rec[1], "left":rec[2], "right":rec[3]})
+      //         }
+      //     new_insight_both_list.push({"selectedArea":selectedArea,
+      //         "recommendArea":recommendArea, "insight_type":insight.vis_type});
+      //   }
+      //   else{
+      //     console.log("cross_rl_list.push", insight);
+      //     cross_rl_list.push(insight);
+      //     cross_fid_list.push(this.currentFigIDList[index]);
+      //   }
+      // }
+      let type_mp = {
+            "unit visualization": "Unit Visualization",
+            "line chart": "Line Chart",
+            "strip plot": "Strip Plot",
+            "box plot": "Box Plot",
+            "bar chart": "Bar Chart",
+            "horizon graph": "Horizon Graph",
+            "scatter plot": "Scatterplot",
+            "parallel coordinte plot": "Parallel Coordinate Plot",
+            "pie chart": "Pie Chart",
+            "multi series line chart": "Multi Series Line Chart",
+            "density plot": "Density Plot",
+            "radial plot": "Radial Plot",
+            "multi line chart": "Multi Series Line Chart",
+            // "histogram bar": "Histogram Bar",
+            // "histogram area": "Histogram Area",
+            "histogram bar": "Density Plot",
+            "histogram area": "Density Plot",
+            }
+
+      for (const [index, insight] of insight_both_list.entries()) {
+        console.log("update_list_and_fid_item_hp_pos", item);
+        console.log("update_list_and_fid_insight_hp_pos", insight);
+        // for(var insight of txt.encoding){
+          let judge = this.judge_merge(item.hp_pos[0][0], item.hp_pos[1][0], item.hp_pos[0][1], item.hp_pos[1][1], 
+                          insight.selectedArea.top, insight.selectedArea.left, insight.selectedArea.bottom, insight.selectedArea.right);
+          if (judge === false && insight.recommendArea.length > 0){
+            // console.log("for_rec", insight);
+            for(var rec of insight.recommendArea){
+              judge = this.judge_merge(item.hp_pos[0][0], item.hp_pos[1][0], item.hp_pos[0][1], item.hp_pos[1][1], 
+                      rec.top, rec.left, rec.bottom, rec.right);
+              if(judge === true)
+                break;
+            }
+          }
+        if(judge === false){
+          new_rl_list.push(insight);
+          new_fid_list.push(this.currentFigIDList[index]);
+          // console.log("update_list_and_fid_insightinsight", insight);
+          let cur_type = insight.insight_type
+          if (cur_type in type_mp)
+            cur_type = type_mp[cur_type];
+          new_insightList.push(cur_type);
+          new_insight_is_user.push(insight_is_user[index]);
+          new_insight_both_list.push(insight);
+        }
+        else{
+          console.log("cross_rl_list.push", insight);
+          cross_rl_list.push(insight);
+          cross_fid_list.push(this.currentFigIDList[index]);
+        }
+      }
+      
+      // console.log("this.RLEncodingList", this.RLEncodingList.length);
+      // console.log("this.currentFigIDList", this.currentFigIDList.length)
+      // console.log("cross_fid_list", cross_rl_list.length, cross_fid_list.length);
+      // handle_rl_num_change
+
+      for (let id in cross_fid_list) {
+        let fid = cross_fid_list[id];
+        let rl = cross_rl_list[id];
+        console.log("delete_cross_fid_list", fid, rl);
+        this.$bus.$emit("delete-rl-fig-id", fid)  // 删除该figid对应的组
+        // todo删除对应的insight marker
+        d3.selectAll("#ins-marker-" + fid).remove();
+        // this.$set(this.currentFigIDList, i, null);
+      }
+      // for (let fid of cross_fid_list) {
+      //   console.log("delete_cross_fid_list", fid)
+      //   this.$bus.$emit("delete-rl-fig-id", fid)  // 删除该figid对应的组
+      //   // todo删除对应的insight marker
+      //   d3.selectAll("#ins-marker-" + fid).remove();
+      //   // this.$set(this.currentFigIDList, i, null);
+      // }
+      new_rl_list.push(item);
+      let cur_type = item.vis_type
+      if (cur_type in type_mp)
+        cur_type = type_mp[cur_type];
+      new_insightList.push(cur_type); 
+      new_insight_is_user.push(false);
+      
+      let selectedArea = {"top":item.hp_pos[0][0], "bottom":item.hp_pos[0][1], "left":item.hp_pos[1][0], "right":item.hp_pos[1][1]}
+      let recommendArea = [];
+      if (item.rec_list != null)
+          for (var rec of item.rec_list){
+              recommendArea.push({"top":rec[0], "bottom":rec[1], "left":rec[2], "right":rec[3]})
+          }
+      new_insight_both_list.push({"selectedArea":selectedArea,
+          "recommendArea":recommendArea, "insight_type":item.vis_type});
+      console.log("new_rl_list", new_rl_list);
+      console.log("new_fid_list", new_fid_list);
+      console.log("new_insightList", new_insightList);
+      console.log("new_insight_is_user", new_insight_is_user);
+      console.log("new_insight_both_list", new_insight_both_list);
+      // this.RLEncodingList = new_rl_list;
+      this.currentFigIDList = new_fid_list;
+      this.$bus.$emit("App-alter_update_vis-end", new_insightList);
+      this.$bus.$emit("RLPanel-alter_update_vis-end", new_insight_is_user, new_insight_both_list);
+      this.currentAutoVisNumber = new_fid_list.length;
+
+
+      // this.currentFigIDList = this.currentFigIDList.slice(0, this.selectedAutoVisNumber+1)
+      // this.currentAutoVisNumber = this.selectedAutoVisNumber
+      // else {  // 创建新的
+      //   for (var i=this.currentAutoVisNumber+1; i<=this.selectedAutoVisNumber; i++) {
+      //     this.auto_visualize_data(i)
+      //   }
+      //   this.currentAutoVisNumber = this.selectedAutoVisNumber
+      // }
+      // this.$bus.$emit("update_next_encoding", this.RLEncodingList);
+    },
+
+    auto_visualize_data(visNum, alter_item = undefined) {   //创建encodinglist里的第visNum个可视化
+      var item = undefined
+      if (visNum == -1){
+        item = alter_item
+      }
+      else{
+        var encodingList = this.RLEncodingList
+        if (visNum < 0 || encodingList == null) {console.error("auto_visualize_data null", visNum, encodingList); return}  //为了解决奇怪的bug
+        // else
+        //   console.error("auto_visualize_data not null", visNum, encodingList);
+        item = encodingList[visNum]
+        if (visNum >= encodingList.length) {console.error('eeeeeeeeeeeeeeeeeeee', visNum, encodingList.length); return}
+      }
+      // console.log("visNum", visNum, item, this.RLEncodingList.length);
+      
+      // for (var item of encodingList) {  // 绘制每个可视化
+      // 创建可视化
+      let parsed_item = parse_encoding_item(item, this.headerRange)   // 将harpoon的数据解析为可用的数据格式
+
+      let pos = parsed_item.position
+      let hp_pos = item.hp_pos
+      let vis_type = parsed_item.vis_type
+      let direction = parsed_item.direction
+      let encoding = parsed_item.encoding
+      let insight = parsed_item.insight
+      let recommend = parsed_item.recommend
+      let rec_list = parsed_item.rec_list
+      // console.log("parsed_item.hp_pos_rec_list", visNum, parsed_item.hp_pos_rec_list)
+
+      // 计算优先级数据
+      this.rowType = recommend.row.type
+      this.colType = recommend.col.type
+      this.rowPriorityRange = recommend.row.range
+      this.colPriorityRange = recommend.col.range
+      // console.log("this.rowPriorityRange", this.rowPriorityRange)
+      this.cal_recommendation_data(pos.top - this.headerRange.bottom - 1,
+          pos.bottom - this.headerRange.bottom - 1,
+          pos.left - this.headerRange.right - 1,
+          pos.right - this.headerRange.right - 1,
+          false)
+
+      if (vis_type != "Unit Visualization") { // 不是unit vis
+        var removeZero = false
+        if (insight.type == 'Skewness' || insight.type == 'Kurtosis') {
+          removeZero = true
+        }
+        let reco_arr = this.generate_vega_recommendation_data(removeZero, rec_list, parsed_item.hp_pos_rec_list)
+        // if (typeof hp_pos_row === 'number')
+        //   hp_pos_row = [hp_pos_row, hp_pos_row + 1];
+        // else
+        //   hp_pos_row = [hp_pos_row[0], hp_pos_row[1]];
+        let config = {'name': vis_type, 'direction': direction, 'encoding': encoding, 'recommend':reco_arr, 'insight':insight, 'hp_pos':hp_pos}
+        // for (var arr in reco_arr)
+        // console.log("reco_arr.len", config.recommend.length)
+        // for (let i = 0; i < reco_arr.length; i++)
+        //   console.log("reco_arr", reco_arr[i].hp_pos_rec)
+        // console.log("config.recommend.len", config.recommend.length)
+        // for (let i = 0; i < config.recommend.length; i++)
+        //   console.log("config.recommend", config.recommend[i].hp_pos_rec)
+        this.auto_create_vega_vis(pos.top, pos.bottom, pos.left, pos.right, config)
+      } 
+      else {  // unit vis需单独讨论
+        let config = {
+          //这里写那些需要编码的encodings，目前是固定的，如果hp要改记得在这里改
+          "name":'unit',
+          "encodings": {
+            "color": true,
+            "height": false,
+            "width": true,
+            "xOffset": false,
+            "yOffset": false,
+            "size": true
+          },
+          "shape": "square",
+          "color": "#1783b1",
+          "relativeSize": 0.8,
+          "scale": "linear",
+          "align": "middle",
+          "isrec": false
+        }
+        this.auto_create_unit_vis(pos.top, pos.bottom, pos.left, pos.right, config)
+        
+        //对rec_list的每块都调用一次上边的函数
+        for (var i in rec_list) {
+          config.isrec = true
+          // 每个元素顺序是top, bottom, left, right, marker
+          var top=rec_list[i][0], bottom=rec_list[i][1], left=rec_list[i][2], right=rec_list[i][3]
+          this.auto_create_unit_vis(top+this.headerRange.bottom+1, bottom+this.headerRange.bottom+1, left+this.headerRange.right+1, right+this.headerRange.right+1, config)
+        }
+      }
+
+      // 绘制insight marker
+      let fill = "", is_rec=true, is_sep=true
+      if (rec_list.length == 1 ) {  // rec——list=1时，等于没有推荐
+        // fill = vis_type == 'Unit Visualization' ? 'none' : 'white'
+        fill='none'
+        is_rec=false
+      }
+      else if (this.rowType!='name' && this.colType!='name') {
+        // fill = vis_type == 'Unit Visualization' ? 'none' : 'white'
+        fill='none'
+        is_sep=false
+      }
+      else {
+        // var color_list=["#fbb4ae","#b3cde3", "#ccebc5","#decbe4","#fed9a6"]
+        // fill = color_list[this.insight_color_num]
+        fill ="grey"
+        // this.insight_color_num += 1
+        // if(this.insight_color_num > 4) this.insight_color_num = 0
+      }
+
+      let ins_border = {
+        top:pos.top-this.headerRange.bottom-1, 
+        bottom:pos.bottom-this.headerRange.bottom-1, 
+        left:pos.left-this.headerRange.right-1, 
+        right:pos.right-this.headerRange.right-1
+      } //记录四角框的位置
+
+      for (var i in rec_list) {
+        // 每个元素顺序是top, bottom, lefts, right, marker
+        var top=rec_list[i][0], bottom=rec_list[i][1], left=rec_list[i][2], right=rec_list[i][3], marker=rec_list[i][4];
+        this.draw_insight_marker(top, bottom, left, right, marker, fill);
+        console.log("draw_insight_marker", top, bottom, left, right, marker, fill);
+        
+
+        if (insight.type == 'Dominance' || insight.type == 'Top 2') {
+          console.log('draw arrows!!')
+          let is_row_aggr = encoding.color[0] == 'c' ? true : false
+          this.draw_insight_arrow(top, left, is_row_aggr)
+        }
+
+        if (is_rec && !is_sep) {  // 为了画四角框
+          ins_border.top = top < ins_border.top ? top : ins_border.top
+          ins_border.bottom = bottom > ins_border.bottom ? bottom : ins_border.bottom
+          ins_border.left = left < ins_border.left ? left : ins_border.left
+          ins_border.right = right > ins_border.right ? right : ins_border.right
+        }
+      }
+
+      if (is_rec && !is_sep) {
+        this.draw_insight_border(ins_border.top, ins_border.bottom, ins_border.left, ins_border.right)
+      }
+
+      
+    },
+
+
+    auto_create_unit_vis(top, bottom, left, right, config) {
+      let vis=[], selectedPos
+      for (var x=top; x<=bottom; x++) {
+        for (var y=left; y<=right; y++) {
+          var value = get_unit_data_for_transmission(x-this.headerRange.bottom-1, y-this.headerRange.right-1, this.valueDistribution, this.seq2num)
+          var pos = get_pos_for_transmission(
+            x,
+            x,
+            y,
+            y,
+            this.markWidth,
+            this.markHeight,
+            this.widthRangeList,
+            this.heightRangeList
+          );
+          if (x==top && y==bottom) selectedPos = pos
+          var obj = {position: pos, value: value, priority: 0};
+          vis.push(obj);
+        }
+      }
+      var visdata = JSON.stringify(vis)
+
+      var meta = { x: { range: 1 }, y: { range: 1 } };
+      var metadata = JSON.stringify(meta);
+
+      this.$bus.$emit("auto-visualize-data", selectedPos, visdata, metadata, config);
+    },
+    // hp_get_unit_vis(top, bottom, left, right) {
+    //   let vis=[]
+    //   for (var x=top; x<=bottom; x++) {
+    //     for (var y=left; y<=right; y++) {
+    //       var value = get_unit_data_for_transmission(x-this.headerRange.bottom-1, y-this.headerRange.right-1, this.valueDistribution, this.seq2num)
+    //       var pos = get_pos_for_transmission(
+    //         x,
+    //         x,
+    //         y,
+    //         y,
+    //         this.markWidth,
+    //         this.markHeight,
+    //         this.widthRangeList,
+    //         this.heightRangeList
+    //       );
+    //       var obj = {position: pos, value: value, priority: 0};
+    //       vis.push(obj);
+    //     }
+    //   }
+    //   var visdata = JSON.stringify(vis)
+
+    //   var meta = { x: { range: 1 }, y: { range: 1 } };
+    //   var metadata = JSON.stringify(meta);
+    //   return [visdata, metadata];
+    // },
+    // hp_get_vega_vis(top, bottom, left, right, vis_type){
+    //   var removeZero = false
+    //   if (vis_type == 'Skewness' || vis_type == 'Kurtosis') {
+    //     removeZero = true
+    //   }
+    //   var [jsdata, metadata] = get_data_for_transmission(
+    //       top,
+    //       bottom,
+    //       left,
+    //       right,
+    //       this.headerRange,
+    //       this.valueDistribution,
+    //       this.seq2num,
+    //       this.rowHeader.length,
+    //       this.colHeader.length,
+    //       this.headerDistribution,
+    //       this.colHeader,
+    //       this.rowHeader,
+    //       removeZero
+    //     );
+    //     return [jsdata, metadata];
+    // },
+    
+    auto_create_vega_vis(top, bottom, left, right, config){
+      var removeZero = false
+      if (config.insight.type == 'Skewness' || config.insight.type == 'Kurtosis') {
+        removeZero = true
+      }
+      var [jsdata, metadata] = get_data_for_transmission(
+          top,
+          bottom,
+          left,
+          right,
+          this.headerRange,
+          this.valueDistribution,
+          this.seq2num,
+          this.rowHeader.length,
+          this.colHeader.length,
+          this.headerDistribution,
+          this.colHeader,
+          this.rowHeader,
+          removeZero
+        );
+        var pos = get_pos_for_transmission(
+          top,
+          bottom,
+          left,
+          right,
+          this.markWidth,
+          this.markHeight,
+          this.widthRangeList,
+          this.heightRangeList
+        );
+        // console.log("auto-vis-data", data)
+        // console.log("auto-vis-data pos", pos)
+        // console.log("auto-vis-data jsdata", jsdata)
+        // console.log("auto-vis-data metadata", metadata)
+        // console.log("auto-vis-data config", config)
+        console.log("auto-vis-data")
+        this.$bus.$emit("auto-visualize-data", pos, jsdata, metadata, config);
+    },
+    draw_insight_arrow(top, left, is_row) {
+      var figid = this.currentFigIDList[this.currentFigIDList.length-1]  //最新创建的figid
+      var padding = 15, len=30
+      var svg = d3.select("#insight-arrow-container")
+      var arrow = svg.append("defs")
+        .append("marker")
+        .attr("id", "arrow")
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", 8)
+        .attr("refY", 0)
+        .attr("markerWidth", 6)
+        .attr("markerHeight", 6)
+        .attr("orient", "auto");
+      arrow.append("path")
+          .attr("d", "M0,-5L10,0L0,5");
+
+      if (is_row) { //水平箭头
+        var line = svg.append("line")
+        .attr("id", "ins-marker-"+figid)
+        .attr("class", "insight-marker")
+        .attr("x1", this.markWidth + this.widthRangeList[left+this.headerRange.right+1] + padding)
+        .attr("y1", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1]+ padding)
+        .attr("x2", this.markWidth + this.widthRangeList[left+this.headerRange.right+1]+ padding + len)
+        .attr("y2", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1] + padding)
+        .attr("stroke", "black")
+        .attr("stroke-width", 2)
+        .attr("marker-end", "url(#arrow)");
+      }
+      else {  // 竖直箭头
+        var line = svg.append("line")
+        .attr("id", "ins-marker-"+figid)
+        .attr("class", "insight-marker")
+        .attr("x1", this.markWidth + this.widthRangeList[left+this.headerRange.right+1] + padding)
+        .attr("y1", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1]+ padding)
+        .attr("x2", this.markWidth + this.widthRangeList[left+this.headerRange.right+1]+ padding)
+        .attr("y2", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1] + padding + len)
+        .attr("stroke", "black")
+        .attr("stroke-width", 2)
+        .attr("marker-end", "url(#arrow)");
+      }
+      
+    },
+    draw_insight_border(top, bottom, left, right) {
+      var figid = this.currentFigIDList[this.currentFigIDList.length-1]  //最新创建的figid
+      var padding = 8, len=20, border_color="grey", border_width='5px'
+
+      d3.select("#insight-marker-corner-container").append("line") //左上 x
+        .attr("id", "ins-marker-"+figid)
+        .attr("class", "insight-marker")
+        .attr("x1", this.markWidth + this.widthRangeList[left+this.headerRange.right+1] + padding)
+        .attr("y1", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1]+ padding)
+        .attr("x2", this.markWidth + this.widthRangeList[left+this.headerRange.right+1]+ padding + len)
+        .attr("y2", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1] + padding)
+        .style("stroke", border_color)
+        .style("stroke-width", border_width)
+      
+      d3.select("#insight-marker-corner-container").append("line") // 左上 y
+      .attr("id", "ins-marker-"+figid)
+      .attr("class", "insight-marker")
+      .attr("x1", this.markWidth + this.widthRangeList[left+this.headerRange.right+1] + padding)
+      .attr("y1", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1]+ padding)
+      .attr("x2", this.markWidth + this.widthRangeList[left+this.headerRange.right+1]+ padding)
+      .attr("y2", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1] + padding + len)
+      .style("stroke", border_color)
+      .style("stroke-width", border_width)
+
+      d3.select("#insight-marker-corner-container").append("line") //左下x
+      .attr("id", "ins-marker-"+figid)
+      .attr("class", "insight-marker")
+      .attr("x1", this.markWidth + this.widthRangeList[left+this.headerRange.right+1] + padding)
+      .attr("y1", this.markHeight + this.heightRangeList[bottom+1+this.headerRange.bottom+1]-padding)
+      .attr("x2", this.markWidth + this.widthRangeList[left+this.headerRange.right+1]+ padding + len)
+      .attr("y2", this.markHeight + this.heightRangeList[bottom+1+this.headerRange.bottom+1] - padding)
+      .style("stroke", border_color)
+      .style("stroke-width", border_width)
+
+      d3.select("#insight-marker-corner-container").append("line") //左下y
+      .attr("id", "ins-marker-"+figid)
+      .attr("class", "insight-marker")
+      .attr("x1", this.markWidth + this.widthRangeList[left+this.headerRange.right+1] + padding)
+      .attr("y1", this.markHeight + this.heightRangeList[bottom+1+this.headerRange.bottom+1] - padding)
+      .attr("x2", this.markWidth + this.widthRangeList[left+this.headerRange.right+1]+ padding)
+      .attr("y2", this.markHeight + this.heightRangeList[bottom+1+this.headerRange.bottom+1] - padding - len)
+      .style("stroke", border_color)
+      .style("stroke-width", border_width)
+
+      d3.select("#insight-marker-corner-container").append("line") //右上 x
+        .attr("id", "ins-marker-"+figid)
+        .attr("class", "insight-marker")
+        .attr("x1", this.markWidth + this.widthRangeList[right+1+this.headerRange.right+1] - padding)
+        .attr("y1", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1]+ padding)
+        .attr("x2", this.markWidth + this.widthRangeList[right+1+this.headerRange.right+1]- padding - len)
+        .attr("y2", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1] + padding)
+        .style("stroke", border_color)
+        .style("stroke-width", border_width)
+      
+      d3.select("#insight-marker-corner-container").append("line") // 右上 y
+      .attr("id", "ins-marker-"+figid)
+      .attr("class", "insight-marker")
+      .attr("x1", this.markWidth + this.widthRangeList[right+1+this.headerRange.right+1] - padding)
+      .attr("y1", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1]+ padding)
+      .attr("x2", this.markWidth + this.widthRangeList[right+1+this.headerRange.right+1]- padding)
+      .attr("y2", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1] + padding + len)
+      .style("stroke", border_color)
+      .style("stroke-width", border_width)
+
+      d3.select("#insight-marker-corner-container").append("line") //右下x
+      .attr("id", "ins-marker-"+figid)
+      .attr("class", "insight-marker")
+      .attr("x1", this.markWidth + this.widthRangeList[right+1+this.headerRange.right+1] - padding)
+      .attr("y1", this.markHeight + this.heightRangeList[bottom+1+this.headerRange.bottom+1]-padding)
+      .attr("x2", this.markWidth + this.widthRangeList[right+1+this.headerRange.right+1]- padding - len)
+      .attr("y2", this.markHeight + this.heightRangeList[bottom+1+this.headerRange.bottom+1] - padding)
+      .style("stroke", border_color)
+      .style("stroke-width", border_width)
+
+      d3.select("#insight-marker-corner-container").append("line") //右下y
+      .attr("id", "ins-marker-"+figid)
+      .attr("class", "insight-marker")
+      .attr("x1", this.markWidth + this.widthRangeList[right+1+this.headerRange.right+1] - padding)
+      .attr("y1", this.markHeight + this.heightRangeList[bottom+1+this.headerRange.bottom+1] - padding)
+      .attr("x2", this.markWidth + this.widthRangeList[right+1+this.headerRange.right+1]- padding)
+      .attr("y2", this.markHeight + this.heightRangeList[bottom+1+this.headerRange.bottom+1] - padding - len)
+      .style("stroke", border_color)
+      .style("stroke-width", border_width)
+
+    },
+    draw_insight_marker(top, bottom, left, right, marker, fill) {
+      var color, stroke_width
+      if (marker) {
+        color ='black'
+        stroke_width = '1px'
+      } else {
+        color = 'black'
+        stroke_width = '1px'
+        fill = 'red'
+      }
+
+      var figid = this.currentFigIDList[this.currentFigIDList.length-1]  //最新创建的figid
+
+      d3.select("#insight-marker-container").append("rect")
+        .attr("id", "ins-marker-"+figid)
+        .attr("class", "insight-marker")
+        .attr("x", this.markWidth + this.widthRangeList[left+this.headerRange.right+1])
+        .attr("y", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1])
+        .attr("width", this.widthRangeList[right+1+this.headerRange.right+1] - this.widthRangeList[left+this.headerRange.right+1])
+        .attr("height", this.heightRangeList[bottom+1+this.headerRange.bottom+1] - this.heightRangeList[top+this.headerRange.bottom+1])
+        .style("stroke", color)
+        .style("stroke-width", stroke_width)
+        // .style("fill", fill)
+        .style("fill", fill)
+        .style("fill-opacity", "6%")
+    },
+
+    cal_range_list(list, listType) {
+      var res = [0],
+        i;
+      for (i in list) {
+        var tmp = 0;
+        for (var j = 0; j <= i; j++) {
+          tmp += list[j];
+        }
+        res.push(tmp);
+      }
+      if (listType == "width") {
+        this.widthRangeList = res;
+      } else if (listType == "height") {
+        this.heightRangeList = res;
+      } else if (listType == "mark width") {
+        this.markWidthRangeList = res;
+      } else {
+        this.markHeightRangeList = res;
+      }
+    },
+    cal_mouse_over_cell(x, y, headerFixed = true) {
+      x = x - this.markWidth;
+      y = y - this.markHeight;
+
+      if (x < 0) x = 0;
+      if (y < 0) y = 0;
+
+      var rowindex,
+        rowFlag = false,
+        len;
+      for (
+        rowindex = 0, len = this.heightRangeList.length;
+        rowindex < len;
+        rowindex++
+      ) {
+        if (
+          y >= this.heightRangeList[rowindex] &&
+          y < this.heightRangeList[rowindex + 1]
+        ) {
+          rowFlag = true;
+          break;
+        }
+      }
+      if (!rowFlag && rowindex != 0) {
+        rowindex -= 2;
+      }
+      this.mouseOverCell.rcurrent = rowindex;
+
+      var columnindex,
+        columnFlag = false;
+      for (
+        columnindex = 0, len = this.widthRangeList.length;
+        columnindex < len;
+        columnindex++
+      ) {
+        if (
+          x >= this.widthRangeList[columnindex] &&
+          x < this.widthRangeList[columnindex + 1]
+        ) {
+          columnFlag = true;
+          break;
+        }
+      }
+      if (!columnFlag) {
+        columnindex -= 2;
+      }
+      this.mouseOverCell.ccurrent = columnindex;
+
+      if (!headerFixed) {
+        var row, column;
+        row = rowindex;
+        for (
+          column = 0, len = this.rowDistributionList[rowindex].length;
+          column < len;
+          column++
+        ) {
+          if (
+            columnindex >= this.rowDistributionList[rowindex][column].start &&
+            columnindex <= this.rowDistributionList[rowindex][column].end
+          ) {
+            break;
+          }
+        }
+
+        this.mouseOverCell.column = column;
+        this.mouseOverCell.row = row;
+        this.mouseOverCell.cstart = this.rowDistributionList[row][column].start;
+        this.mouseOverCell.cend = this.rowDistributionList[row][column].end;
+        this.mouseOverCell.rstart = row;
+        this.mouseOverCell.rend = row;
+      } else {
+        // useless
+        this.mouseOverCell.row = null;
+        this.mouseOverCell.column = null;
+
+        // 得根据seq或header range算
+        if (
+          rowindex > this.headerRange.bottom &&
+          columnindex > this.headerRange.right
+        ) {
+          // value cell
+          this.mouseOverCell.cstart = columnindex;
+          this.mouseOverCell.cend = columnindex;
+          this.mouseOverCell.rstart = rowindex;
+          this.mouseOverCell.rend = rowindex;
+        } else if (
+          rowindex <= this.headerRange.bottom &&
+          columnindex > this.headerRange.right
+        ) {
+          // column header todo
+          this.mouseOverCell.cstart = 0;
+          this.mouseOverCell.cend = 0;
+          this.mouseOverCell.rstart = rowindex;
+          this.mouseOverCell.rend = rowindex;
+        } else if (
+          rowindex > this.headerRange.bottom &&
+          columnindex <= this.headerRange.right
+        ) {
+          // row header todo
+          this.mouseOverCell.cstart = columnindex;
+          this.mouseOverCell.cend = columnindex;
+          this.mouseOverCell.rstart = 0;
+          this.mouseOverCell.rend = 0;
+        } else {
+          this.mouseOverCell.cstart = 0;
+          this.mouseOverCell.cend = this.headerRange.right;
+          this.mouseOverCell.rstart = 0;
+          this.mouseOverCell.rend = this.headerRange.bottom;
+        }
+      }
+    },
+    cal_column_mark(index) {
+      var res = "";
+      var first = parseInt(index / 26);
+      if (first > 0) {
+        res = String.fromCharCode(64 + first);
+      }
+      res += String.fromCharCode(65 + (index % 26));
+      return res;
+    },
+    cal_column_number_with_mark(mark) {
+      var res;
+      if (mark.length == 1) {
+        res = mark.charCodeAt() - 64;
+      } else if (mark.length == 2) {
+        res = (mark[0].charCodeAt() - 64) * 26 + (mark[1].charCodeAt() - 64);
+      } else {
+        console.log("cannot resolve column mark!");
+        return;
+      }
+      return res;
+    },
+
+    handle_mouse_down(row, column) {
+      if (this.isCurrFlat) return
+
+      this.selectByMark.row = false;
+      this.selectByMark.column = false;
+
+      this.selectedCell.cstart = this.rowDistributionList[row][column].start;
+      this.selectedCell.cend = this.rowDistributionList[row][column].end;
+      this.selectedCell.rstart = row;
+      this.selectedCell.rend = row;
+
+      this.selectedArea.top = row;
+      this.selectedArea.left = this.rowDistributionList[row][column].start;
+      this.selectedArea.bottom = row;
+      this.selectedArea.right = this.rowDistributionList[row][column].end;
+
+      this.mouseDownState = true;
+    },
+    handle_mouse_down_mark(index, type) {
+      // if (type == 'column') {
+      //   this.selectByMark.column = true
+      //   this.selectByMark.row = false
+      //   this.selectedArea.top = 0
+      //   this.selectedArea.bottom = this.rowHeightList.length - 1
+      //   this.selectedArea.left = index
+      //   this.selectedArea.right = index
+      // }
+      // else {
+      //   this.selectByMark.row = true
+      //   this.selectByMark.column = false
+      //   this.selectedArea.top = index
+      //   this.selectedArea.bottom = index
+      //   this.selectedArea.left = 0
+      //   this.selectedArea.right = this.columnWidthList.length - 1
+      // }
+      // this.selectedMark.index = index
+      // this.selectedMark.type = type
+      // this.mouseDownMarkState = true
+    },
+    handle_mouse_down_mark_line(index, type) {
+      this.mouseDownMarkLine.index = index;
+      this.mouseDownMarkLine.type = type;
+      this.mouseDownMarkLineState = true;
+
+      if (type == "column") {
+        this.visRerenderPrePos.x =
+          this.markWidth + this.markWidthRangeList[index + 1];
+        this.visRerenderPrePos.y = 0;
+      } else {
+        this.visRerenderPrePos.x = 0;
+        this.visRerenderPrePos.y =
+          this.markHeight + this.markHeightRangeList[index + 1];
+      }
+    },
+    handle_mouse_down_mask(event) {
+      this.clear_selected_header();
+      this.cal_mouse_over_cell(event.offsetX, event.offsetY);
+
+      this.selectByMark.row = false;
+      this.selectByMark.column = false;
+
+      this.selectedCell.cstart = this.mouseOverCell.cstart;
+      this.selectedCell.cend = this.mouseOverCell.cend;
+      this.selectedCell.rstart = this.mouseOverCell.rstart;
+      this.selectedCell.rend = this.mouseOverCell.rend;
+
+      this.selectedArea.top = this.mouseOverCell.rstart;
+      this.selectedArea.left = this.mouseOverCell.cstart;
+      this.selectedArea.bottom = this.mouseOverCell.rend;
+      this.selectedArea.right = this.mouseOverCell.cend;
+
+      this.selectedAreaForHoverOffset.top = this.mouseOverCell.rstart;
+      this.selectedAreaForHoverOffset.left = this.mouseOverCell.cstart;
+
+      this.mouseDownState = true;
+      this.mouseDownMaskState = true;
+
+      this.clear_recommendation_area();
+      this.$bus.$emit("select-cell");
+    },
+    handle_mouse_down_selected(event) {
+      this.cal_mouse_over_cell(event.offsetX, event.offsetY);
+      // this.handle_mouse_down(this.mouseOverCell.row, this.mouseOverCell.column)
+      this.handle_mouse_down_mask(event);
+    },
+    handle_mouse_move(event) {
+      if (this.isCurrFlat) return
+
+      if (this.mouseDownMarkLineState) {
+        if (this.mouseDownMarkLine.type == "column") {
+          var offset =
+            event.offsetX -
+            this.markWidth -
+            this.markWidthRangeList[this.mouseDownMarkLine.index];
+          if (offset < this.cellMin) offset = this.cellMin;
+          this.markColumnWidthList[this.mouseDownMarkLine.index] = offset;
+          this.markWidthChangeSignal = !this.markWidthChangeSignal;
+          // this.send_change_width_signal()
+        } else if (this.mouseDownMarkLine.type == "row") {
+          var offset =
+            event.offsetY -
+            this.markHeight -
+            this.markHeightRangeList[this.mouseDownMarkLine.index];
+          if (offset < this.cellMin) offset = this.cellMin;
+          this.markRowHeightList[this.mouseDownMarkLine.index] = offset;
+          this.markHeightChangeSignal = !this.markHeightChangeSignal;
+          // this.send_change_height_signal()
+        }
+      } else if (this.mouseDownMarkState) {
+        this.cal_mouse_over_cell(event.offsetX, event.offsetY);
+        if (this.selectedMark.type == "column") {
+          this.selectedArea.left =
+            this.selectedMark.index < this.mouseOverCell.ccurrent
+              ? this.selectedMark.index
+              : this.mouseOverCell.ccurrent;
+          this.selectedArea.right =
+            this.selectedMark.index > this.mouseOverCell.ccurrent
+              ? this.selectedMark.index
+              : this.mouseOverCell.ccurrent;
+        } else {
+          this.selectedArea.top =
+            this.selectedMark.index < this.mouseOverCell.rcurrent
+              ? this.selectedMark.index
+              : this.mouseOverCell.rcurrent;
+          this.selectedArea.bottom =
+            this.selectedMark.index > this.mouseOverCell.rcurrent
+              ? this.selectedMark.index
+              : this.mouseOverCell.rcurrent;
+        }
+      } else if (this.mouseDownState) {
+        this.cal_mouse_over_cell(event.offsetX, event.offsetY);
+
+        this.selectedArea.top =
+          this.selectedCell.rstart < this.mouseOverCell.rstart
+            ? this.selectedCell.rstart
+            : this.mouseOverCell.rstart;
+        this.selectedArea.bottom =
+          this.selectedCell.rend > this.mouseOverCell.rend
+            ? this.selectedCell.rend
+            : this.mouseOverCell.rend;
+        this.selectedArea.left =
+          this.selectedCell.cstart < this.mouseOverCell.cstart
+            ? this.selectedCell.cstart
+            : this.mouseOverCell.cstart;
+        this.selectedArea.right =
+          this.selectedCell.cend > this.mouseOverCell.cend
+            ? this.selectedCell.cend
+            : this.mouseOverCell.cend;
+      } else return; // ignore other mousemoves when mouse is not down
+    },
+    handle_mouse_up() {
+      if (this.isCurrFlat) return
+
+      this.mouseDownState = false;
+      this.mouseDownMarkState = false;
+
+      if (this.mouseDownMarkLineState) {
+        this.clear_selected_header();
+        this.clear_selected_cell(true);
+        // this.handle_zoom_in();
+        if (this.mouseDownMarkLine.type == "column") {
+          this.columnWidthList = this.markColumnWidthList;
+          this.widthChangeSignal = !this.widthChangeSignal;
+
+          this.visRerenderAfterPos.x =
+            this.markWidth +
+            this.markWidthRangeList[this.mouseDownMarkLine.index + 1];
+          this.visRerenderAfterPos.y = 0;
+        }
+        if (this.mouseDownMarkLine.type == "row") {
+          this.rowHeightList = this.markRowHeightList;
+          this.heightChangeSignal = !this.heightChangeSignal;
+
+          this.visRerenderAfterPos.x = 0;
+          this.visRerenderAfterPos.y =
+            this.markHeight +
+            this.markHeightRangeList[this.mouseDownMarkLine.index + 1];
+        }
+
+        if (
+          (this.mouseDownMarkLine.type == "column" &&
+            this.visRerenderAfterPos.x != this.visRerenderPrePos.x) ||
+          (this.mouseDownMarkLine.type == "row" &&
+            this.visRerenderAfterPos.y != this.visRerenderPrePos.y)
+        ) {
+          this.$bus.$emit(
+            "rerender-selectedData",
+            this.visRerenderPrePos,
+            this.visRerenderAfterPos
+          );
+        }
+
+        this.mouseDownMarkLineState = false;
+      }
+      this.mouseOverCell = {
+        row: null,
+        column: null,
+        cstart: null,
+        cend: null,
+        ccurrent: null,
+        rstart: null,
+        rend: null,
+        rcurrent: null,
+      };
+      this.mouseDownMarkLine = { index: null, type: null };
+      // console.log("Before setting selectedMark:", this.insightList);
+      this.selectedMark = { index: null, type: null };
+      // console.log("After setting selectedMark:", this.insightList);
+
+      if (this.mouseDownMaskState) {
+        if (
+          this.selectedArea.top > this.headerRange.bottom &&
+          this.selectedArea.left > this.headerRange.right
+        ) {
+          if (
+            this.selectedArea.top == this.selectedArea.bottom &&
+            this.selectedArea.left == this.selectedArea.right
+          ) {
+            // single unit recommend here
+            this.isChoosingUnit = true;
+            this.show_recommend_element(true);
+            this.cal_recommendation_data(
+              this.selectedArea.top - this.headerRange.bottom - 1,
+              this.selectedArea.bottom - this.headerRange.bottom - 1,
+              this.selectedArea.left - this.headerRange.right - 1,
+              this.selectedArea.right - this.headerRange.right - 1
+            );
+          } else {
+            // not single unit
+            this.isChoosingUnit = false;
+            // this.hide_recommend_element();
+            this.show_recommend_element(true);
+            this.cal_recommendation_data(
+              this.selectedArea.top - this.headerRange.bottom - 1,
+              this.selectedArea.bottom - this.headerRange.bottom - 1,
+              this.selectedArea.left - this.headerRange.right - 1,
+              this.selectedArea.right - this.headerRange.right - 1
+            );
+          }
+          this.transmit_chosen_to_vis(
+            this.selectedArea.top,
+            this.selectedArea.bottom,
+            this.selectedArea.left,
+            this.selectedArea.right
+          );
+
+          if (
+            this.selectedArea.top != null &&
+            this.selectedArea.top == this.selectedArea.bottom &&
+            this.selectedArea.left == this.selectedArea.right
+          ) {
+            console.log("transmit-unit_recommendation_to_vis-handle_mouse_up");
+            this.transmit_unit_recommendation_to_vis();
+          }
+        }
+        this.mouseDownMaskState = false;
+      }
+    },
+    // handle_mouse_up_on_blank() {
+    //   this.clear_selected_cell()
+    // },
+    handle_click_on_blank() {
+      this.clear_selected_cell(true);
+      this.hide_recommend_element();
+    },
+    handle_mouse_over_mark(index, type) {
+      // if (
+      //   this.mouseDownState ||
+      //   this.mouseDownMarkState ||
+      //   this.mouseDownMarkLineState
+      // )
+      //   return;
+      // this.mouseOverMark.index = index;
+      // this.mouseOverMark.type = type;
+    },
+    handle_mouse_out_mark() {
+      // this.mouseOverMark = { index: null, type: null };
+    },
+
+    choose_header(type) {
+      if (type == "column") {
+        this.headerRange.bottom = this.selectedArea.bottom;
+        this.headerFixedFlag.column = true;
+      } else {
+        this.headerRange.right = this.selectedArea.right;
+        this.headerFixedFlag.row = true;
+      }
+      if (this.headerFixedFlag.row && this.headerFixedFlag.column) {
+        // both column and row headers are fixed, change valuecells to header sequences
+        this.colHeader = [];
+        get_column_header(
+          this.headerIndex,
+          this.colHeaderIndex,
+          this.colHeader,
+          this.headerRange,
+          this.rowDistributionList,
+          this.dataValueList,
+          this.headerDistribution,
+          this.header2num,
+          this.num2header
+        );
+
+        this.rowHeader = [];
+        get_row_header(
+          this.headerIndex,
+          this.rowHeaderIndex,
+          this.rowHeader,
+          this.headerRange,
+          this.rowHeightList,
+          this.dataValueList,
+          this.headerDistribution,
+          this.header2num,
+          this.num2header
+        );
+
+        this.num2seq = new Map();
+        this.seq2num = new Map();
+        get_cell_sequence(
+          this.headerRange,
+          this.rowHeightList,
+          this.columnWidthList,
+          this.dataValueList,
+          this.colHeader,
+          this.rowHeader,
+          this.num2seq,
+          this.seq2num,
+          this.valueIndex
+        );
+
+        this.valueIndex = this.num2seq.size;
+        this.clear_selected_cell();
+        // this.$emit("changeHeaderFixed", true);
+      }
+    },
+    send_change_height_signal() {
+      this.rowHeightList = this.markRowHeightList;
+      this.heightChangeSignal = !this.heightChangeSignal;
+      this.markHeightChangeSignal = !this.markHeightChangeSignal;
+    },
+    send_change_width_signal() {
+      this.columnWidthList = this.markColumnWidthList;
+      this.widthChangeSignal = !this.widthChangeSignal;
+      this.markWidthChangeSignal = !this.markWidthChangeSignal;
+    },
+    set_list_length(list, n, filling) {
+      if (list.length >= n) {
+        return list.splice(0, n);
+      } else {
+        return list.concat(new Array(n - list.length).fill(filling));
+      }
+    },
+
+    clear_selected_cell(clearRecommend = false) {
+      this.selectedCell = {
+        cstart: null,
+        cend: null,
+        rstart: null,
+        rend: null,
+      };
+      this.selectedArea = { top: null, left: null, bottom: null, right: null };
+      this.selectedMark = { index: null, type: null };
+      this.selectByMark = { row: false, column: false };
+
+      // cancel recommend
+      if (clearRecommend) {
+        this.clear_recommendation_area();
+        console.log("close-VisView-clearRecommend");
+        // this.$bus.$emit("close-VisView");
+      }
+    },
+    clear_selected_header() {
+      // this.selectedHeader = null
+      d3.select("#interaction-helper").remove();
+      d3.select("#interaction-helper-line").remove();
+    },
+    clear_recommendation_area() {
+      // d3.selectAll(".recommend-helper-both").remove();
+      // d3.selectAll(".recommend-helper-row").remove();
+      // d3.selectAll(".recommend-helper-col").remove();
+      // d3.selectAll(".recommend-helper-tree-both").remove();
+      // d3.selectAll(".recommend-helper-tree-row").remove();
+      // d3.selectAll(".recommend-helper-tree-col").remove();
+
+      d3.selectAll(".recommend-area").remove()
+      // this.$bus.$emit("close-VisView");
+    },
+    hide_recommendation_area() {
+      // d3.selectAll(".recommend-helper-both").style("visibility", "hidden");
+      // d3.selectAll(".recommend-helper-row").style("visibility", "hidden");
+      // d3.selectAll(".recommend-helper-col").style("visibility", "hidden");
+      // d3.selectAll(".recommend-helper-tree-both").style("visibility", "hidden");
+      // d3.selectAll(".recommend-helper-tree-row").style("visibility", "hidden");
+      // d3.selectAll(".recommend-helper-tree-col").style("visibility", "hidden");
+
+      // d3.selectAll(".recommend-helper").style("visibility", "hidden")
+    },
+    hide_recommend_element() {
+      d3.selectAll(".recommend-element").style("visibility", "hidden");
+      d3.selectAll("#recommend-apply-button").style("visibility", "hidden");
+
+      d3.selectAll(".hover-helper").remove();
+      this.isRecommendState = false;
+    },
+    show_recommend_element(notShowButton = false) {
+      // this.directionSelectValue = ["row", "column"];
+      d3.selectAll(".recommend-element").style("visibility", "visible");
+      if (notShowButton) {
+        d3.selectAll("#recommend-apply-button").style("visibility", "hidden");
+      } else {
+        d3.selectAll("#recommend-apply-button").style("visibility", "visible");
+        this.isRecommendState = true;
+      }
+    },
+    // cancel_recommendation() {
+    //   this.clear_selected_cell(true);
+    //   this.hide_recommend_element();
+    // },
+    // confirm_recommendation() {
+    //   if (!this.isChoosingUnit) {
+    //     this.transmit_recommendation_to_vis();
+    //   }
+    //   this.hide_recommend_element();
+    //   this.clear_selected_cell(true);
+    // },
+
+    handle_transform_swap(name, isSwapUp) {
+      var distributionInfo = this.headerDistribution.get(name);
+      if (distributionInfo.isRowHeader) {
+        this.transform_swap(name, this.rowHeader, isSwapUp, true);
+      } else {
+        this.transform_swap(name, this.colHeader, isSwapUp, false);
+      }
+    },
+
+    handle_transform_2stacked_button() {
+      if (this.selectedHeader == null) return;
+      var name = this.selectedHeader.name;
+      // var times = this.selectedHeader.times
+      var distributionInfo = this.headerDistribution.get(name);
+      var layer = distributionInfo.layer;
+      var isRow = distributionInfo.isRowHeader;
+      var header = isRow ? this.rowHeader : this.colHeader;
+
+      for (var [key, headerInfo] of header[layer]) {
+        if (key[0] == "&") continue; // don't change linear nodes
+        var ranges = headerInfo.range;
+        for (var times = 0; times < ranges.length; times++) {
+          if (isRow) {
+            this.transform_2stacked(key, this.rowHeader, times, true);
+            this.cal_range_list(this.markRowHeightList, "mark height");
+            this.cal_range_list(this.rowHeightList, "height");
+          } else {
+            this.transform_2stacked(key, this.colHeader, times, false);
+            this.cal_range_list(this.markColumnWidthList, "mark width");
+            this.cal_range_list(this.columnWidthList, "width");
+          }
+
+          // recalculate value-cell position
+          for (var item of this.num2seq) {
+            this.cal_value_cell_position(item[1].seq);
+          }
+        }
+      }
+      this.clear_selected_header();
+    },
+    handle_transform_2linear_dropdown(command) {
+      if (this.selectedHeader == null) return;
+      var name = this.selectedHeader.name;
+      var distributionInfo = this.headerDistribution.get(name);
+      var layer = distributionInfo.layer;
+      var isRow = distributionInfo.isRowHeader;
+      var header = isRow ? this.rowHeader : this.colHeader;
+
+      for (var [key, headerInfo] of header[layer]) {
+        var ranges = headerInfo.range;
+        for (var times = 0; times < ranges.length; times++) {
+          if (headerInfo.children[times][0][0] != "&") {
+
+            // //test
+            // if (key != name)  continue
+
+
+            // is stacked
+            if (isRow) {
+              this.transform_2linear(
+                key,
+                this.rowHeader,
+                times,
+                isRow,
+                command
+              );
+              this.cal_range_list(this.markRowHeightList, "mark height");
+              this.cal_range_list(this.rowHeightList, "height");
+            } else {
+              this.transform_2linear(
+                key,
+                this.colHeader,
+                times,
+                isRow,
+                command
+              );
+              this.cal_range_list(this.markColumnWidthList, "mark width");
+              this.cal_range_list(this.columnWidthList, "width");
+            }
+
+            // recalculate value-cell position
+            for (var item of this.num2seq) {
+              this.cal_value_cell_position(item[1].seq);
+            }
+          } else {
+            // already linear todo change operator
+            continue;
+          }
+        }
+      }
+      this.clear_selected_header();
+    },
+    handle_zoom_out() {
+      this.isZoomOut = true;
+      let obj = d3.select(".table-view-svg-container");
+      var w = obj.style("width");
+      w = Number(w.substring(0, w.length - 2));
+      var h = obj.style("height");
+      h = Number(h.substring(0, h.length - 2));
+
+      let x = d3.select(".table-view-svg").style("width");
+      x = Number(x.substring(0, x.length - 2));
+      let y = d3.select(".table-view-svg").style("height");
+      y = Number(y.substring(0, y.length - 2));
+
+      let widthScale = w / x,
+        heightScale = h / y;
+
+      let scale = Math.min(widthScale, heightScale);
+      this.zoomScale = scale
+      this.$bus.$emit("change-zoomScale", Math.floor(scale * 100));
+    },
+    handle_zoom_in() {
+      this.isZoomOut = false;
+      this.zoomScale = 1
+      // d3.select(".table-view-svg").attr("transform", null);
+
+      this.$bus.$emit("change-zoomScale", 100);
+    },
+
+    transform_fold() {
+      if (this.isCurrFlat)  return
+      // this.handle_zoom_in();
+      this.clear_selected_cell(true);
+      this.$bus.$emit("change-header");
+      this.isCurrFlat = true;
+      if (this.flatData == null) {
+        this.flatData = get_data_from_chosen(
+          this.headerRange.bottom + 1,
+          this.rowHeightList.length - 1,
+          this.headerRange.right + 1,
+          this.columnWidthList.length - 1,
+          this.headerRange,
+          this.valueDistribution,
+          this.seq2num
+        );
+        // console.log("flatdata", this.flatData)
+
+        if (this.flatAttrName == null) {
+          this.flatAttrName = [];
+          var tmpAttrName = []
+          for (var i = 0; i < this.flatData[0].length; i++) {
+            if (i == this.flatData[0].length - 1) {
+              tmpAttrName.push("value");
+            } else {
+              var name = "attr" + (i + 1);
+              tmpAttrName.push(name);
+            }
+          }
+          this.flatAttrName = tmpAttrName
+        }
+      }
+      this.markColumnWidthList = this.set_list_length(
+        this.markColumnWidthList,
+        this.flatAttrName.length,
+        this.cellWidth
+      );
+      this.markRowHeightList = this.set_list_length(
+        this.markRowHeightList,
+        this.flatData.length + 1,
+        this.cellHeight
+      );
+      this.send_change_height_signal();
+      this.send_change_width_signal();
+
+      this.clear_selected_header()
+    },
+    transform_unfold() {
+      // this.handle_zoom_in();
+      this.clear_selected_cell(true);
+      this.clear_selected_header()
+      this.$bus.$emit("change-header");
+      this.isCurrFlat = false;
+
+      var lastColLayer = JSON.parse(
+        JSON.stringify(Array.from(this.colHeader[this.colHeader.length - 1]))
+      );
+      var lastColRange = JSON.parse(
+        JSON.stringify(lastColLayer[lastColLayer.length - 1][1].range)
+      );
+      var col =
+        this.headerRange.right +
+        1 +
+        lastColRange[lastColRange.length - 1].end +
+        1;
+      this.markColumnWidthList = this.set_list_length(
+        this.markColumnWidthList,
+        col,
+        this.cellWidth
+      );
+
+      var lastRowLayer = JSON.parse(
+        JSON.stringify(Array.from(this.rowHeader[this.rowHeader.length - 1]))
+      );
+      var lastRowRange = JSON.parse(
+        JSON.stringify(lastRowLayer[lastRowLayer.length - 1][1].range)
+      );
+      var row =
+        this.headerRange.bottom +
+        1 +
+        lastRowRange[lastRowRange.length - 1].end +
+        1;
+      this.markRowHeightList = this.set_list_length(
+        this.markRowHeightList,
+        row,
+        this.cellHeight
+      );
+
+      this.send_change_height_signal();
+      this.send_change_width_signal();
+    },
+    transform_transpose() {
+      // this.handle_zoom_in();
+      if (this.isCurrFlat)  return
+      this.clear_selected_cell(true);
+      this.clear_selected_header()
+      this.$bus.$emit("change-header");
+      this.hasTransposed = !this.hasTransposed;
+      for (var i = 0; i < this.colHeader.length; i++) {
+        for (var item of this.colHeader[i]) {
+          var header = item[0];
+          this.headerDistribution.get(header).isRowHeader = true;
+        }
+      }
+      for (var i = 0; i < this.rowHeader.length; i++) {
+        for (var item of this.rowHeader[i]) {
+          var header = item[0];
+          this.headerDistribution.get(header).isRowHeader = false;
+        }
+      }
+
+      var tmp;
+      tmp = this.colHeader;
+      this.colHeader = this.rowHeader;
+      this.rowHeader = tmp;
+
+      tmp = this.headerRange.bottom;
+      this.headerRange.bottom = this.headerRange.right;
+      this.headerRange.right = tmp;
+
+      var colLen = this.columnWidthList.length;
+      var rowLen = this.rowHeightList.length;
+
+      this.markColumnWidthList = this.set_list_length(
+        this.markColumnWidthList,
+        rowLen,
+        this.cellWidth
+      );
+      this.markRowHeightList = this.set_list_length(
+        this.markRowHeightList,
+        colLen,
+        this.cellHeight
+      );
+      this.send_change_height_signal();
+      this.send_change_width_signal();
+    },
+    transform_swap(name, header, isSwapUp, isRow) {
+      if (this.isCurrFlat)  return
+      // this.handle_zoom_in()
+      this.clear_selected_cell(true);
+      this.clear_selected_header()
+      this.$bus.$emit("change-header");
+      var distributionInfo = this.headerDistribution.get(name);
+      var currLayerNum = distributionInfo.layer;
+      var upLayerNum, downLayerNum;
+
+      // if (["Japan", "Europe", "North America", "Rest of World"].includes(name)) {
+      //   if (currLayerNum == 2 && isSwapUp) {
+      //     this.transform_swap("Wii (Wii)", header, isSwapUp, isRow)
+      //     return
+      //   }
+      // }
+
+      if (isSwapUp && currLayerNum != 0) {
+        upLayerNum = currLayerNum - 1;
+        downLayerNum = currLayerNum;
+      } else if (!isSwapUp && currLayerNum != header.length - 1) {
+        upLayerNum = currLayerNum;
+        downLayerNum = currLayerNum + 1;
+      } else return;
+
+      // check fully connected
+      var reference = null,
+        refernum = null;
+      var differ = false;
+      if (upLayerNum != 0) {
+        for (var item of header[upLayerNum - 1].keys()) {
+          if (reference == null) {
+            reference = header[upLayerNum - 1].get(item).children[0];
+            refernum = header[upLayerNum - 1].get(item).children.length;
+          }
+          if (refernum != header[upLayerNum - 1].get(item).children.length) {
+            differ = true;
+            return; // not fully-conn, can't swap
+          }
+          for (
+            var i = 0;
+            i < header[upLayerNum - 1].get(item).children.length;
+            i++
+          ) {
+            if (
+              JSON.stringify(reference) !=
+              JSON.stringify(header[upLayerNum - 1].get(item).children[i])
+            ) {
+              differ = true;
+              return; // not fully-conn, can't swap
+            }
+          }
+        }
+      }
+      (reference = null), (refernum = null), (differ = false);
+      for (var item of header[upLayerNum].keys()) {
+        if (reference == null) {
+          reference = header[upLayerNum].get(item).children[0];
+          refernum = header[upLayerNum].get(item).children.length;
+        }
+        if (refernum != header[upLayerNum].get(item).children.length) {
+          differ = true;
+          return; // not fully-conn, can't swap
+        }
+        for (var i = 0; i < header[upLayerNum].get(item).children.length; i++) {
+          if (
+            JSON.stringify(reference) !=
+            JSON.stringify(header[upLayerNum].get(item).children[i])
+          ) {
+            differ = true;
+            return; // not fully-conn, can't swap
+          }
+        }
+      }
+      // if (differ) {
+      //   return
+      // }
+
+      var new1st = Array.from(header[upLayerNum])[0][1].parent;
+      var new2nd = Array.from(header[upLayerNum])[0][1].children[0];
+      var new3rd = Array.from(header[downLayerNum])[0][1].parent;
+      var new4th = Array.from(header[downLayerNum])[0][1].children[0];
+
+      var new1stChildNum =
+        upLayerNum - 1 < 0
+          ? 1
+          : Array.from(header[upLayerNum - 1])[0][1].children.length;
+      // var new2ndChildNum = Array.from(header[upLayerNum])[0][1].children.length
+      var new1stCount = upLayerNum - 1 < 0 ? 1 : header[upLayerNum - 1].size;
+      var new2ndChildNum =
+        upLayerNum - 1 < 0
+          ? 1
+          : Array.from(header[upLayerNum])[0][1].parent.length;
+      var new3rdChildNum = new1stChildNum * new2nd.length * new1stCount;
+      // var new3rdChildNum = Array.from(header[upLayerNum])[0][1].children[0].length
+
+      var new2ndAsParent = [],
+        new3rdAsChild = [],
+        new3rdAsParent = [];
+      for (var j = 0; j < new2ndChildNum; j++) {
+        for (var i = 0; i < new2nd.length; i++) {
+          new2ndAsParent.push({ name: new2nd[i], ordinal: j });
+        }
+      }
+
+      for (var i = 0; i < new3rd.length; i++) {
+        if (new3rd[i].ordinal == 0) {
+          new3rdAsChild.push(new3rd[i].name);
+        }
+      }
+
+      for (var j = 0; j < new3rdChildNum; j++) {
+        for (var i = 0; i < new3rdAsChild.length; i++) {
+          new3rdAsParent.push({ name: new3rdAsChild[i], ordinal: j });
+        }
+      }
+
+      if (new1st.length != 0) {
+        for (var item of header[upLayerNum - 1]) {
+          var child = []
+          for (var i=0; i<new1stChildNum; i++) {
+            var arr = JSON.parse(JSON.stringify(new2nd))
+            child.push(arr)
+          }
+          item[1].children = child
+          // item[1].children = new Array(new1stChildNum).fill(new2nd);
+          header[upLayerNum - 1].set(item[0], item[1]);
+        }
+      }
+
+      for (var item of header[upLayerNum]) {
+        item[1].parent = new2ndAsParent;
+        if (new4th != null) {
+          var child = []
+          for (var i=0; i<new3rdChildNum; i++) {
+            var arr = JSON.parse(JSON.stringify(new4th))
+            child.push(arr)
+          }
+          item[1].children = child
+          // item[1].children = new Array(new3rdChildNum).fill(new4th);
+        } 
+        else {
+          item[1].children = [];
+        }
+        header[upLayerNum].set(item[0], item[1]);
+        var tmp = JSON.parse(
+          JSON.stringify(this.headerDistribution.get(item[0]))
+        );
+        tmp.layer += 1;
+        this.headerDistribution.set(item[0], tmp);
+      }
+      for (var item of header[downLayerNum]) {
+        item[1].parent = JSON.parse(JSON.stringify(new1st));
+        var child = []        
+        for (var i=0; i<new2ndChildNum; i++) {
+          var arr = JSON.parse(JSON.stringify(new3rdAsChild))
+          child.push(arr)
+        }
+        item[1].children = child
+        // item[1].children = new Array(new2ndChildNum).fill(new3rdAsChild);
+        header[downLayerNum].set(item[0], item[1]);
+        var tmp = JSON.parse(JSON.stringify(this.headerDistribution.get(item[0])));
+        tmp.layer -= 1;
+        this.headerDistribution.set(item[0], tmp);
+      }
+
+      if (new4th != null && new4th.length != 0) {
+        for (var item of header[downLayerNum + 1]) {
+          item[1].parent = JSON.parse(JSON.stringify(new3rdAsParent))
+          header[downLayerNum + 1].set(item[0], item[1]);
+        }
+      }
+
+      // swap position in header array
+      header[upLayerNum] = header.splice(
+        downLayerNum,
+        1,
+        header[upLayerNum]
+      )[0];
+
+      // re-calculate header numbers
+      // up layer
+      for (var item of header[upLayerNum]) {
+        var i = this.header2num.get(item[0]).length;
+        var targetlen = item[1].parent.length;
+        if (i > targetlen) {
+          // remove redundancy
+          for (var j = targetlen; j < i - 1; j++) {
+            var rmindex = this.header2num.get(item[0]).pop();
+            this.num2header.delete(rmindex);
+          }
+        } else {
+          // add new
+          for (i; i < targetlen; i++) {
+            this.num2header.set(this.newHeaderIndex, {
+              value: item[0],
+              times: i,
+            });
+            var tmpindex = JSON.parse(
+              JSON.stringify(this.header2num.get(item[0]))
+            );
+            tmpindex.push(this.newHeaderIndex++);
+            this.header2num.set(item[0], tmpindex);
+          }
+        }
+        this.headerDistribution.get(item[0]).count =
+          item[1].parent.length == 0 ? 1 : item[1].parent.length;
+      }
+      // down layer
+      for (var item of header[downLayerNum]) {
+        var i = this.header2num.get(item[0]).length;
+        var targetlen = item[1].parent.length;
+        if (i > targetlen) {
+          // remove redundancy
+          for (var j = targetlen; j < i; j++) {
+            var rmindex = this.header2num.get(item[0]).pop();
+            this.num2header.delete(rmindex);
+          }
+        } else {
+          // add new
+          for (i; i < targetlen; i++) {
+            this.num2header.set(this.newHeaderIndex, {
+              value: item[0],
+              times: i,
+            });
+            var tmpindex = JSON.parse(
+              JSON.stringify(this.header2num.get(item[0]))
+            );
+            tmpindex.push(this.newHeaderIndex++);
+            this.header2num.set(item[0], tmpindex);
+          }
+        }
+        this.headerDistribution.get(item[0]).count =
+          item[1].parent.length == 0 ? 1 : item[1].parent.length;
+      }
+    },
+    transform_2stacked_advanced(name, header, times, isRow, headerange, layer) {
+      // delete child
+      var movingChildren = []
+      var movingChildPrefix = (isRow && !this.hasTransposed) || (!isRow && this.hasTransposed) ? "&-row-" : "&-col-"
+      for (var i=layer+1; i<=headerange; i++) {
+        var cname = movingChildPrefix + i + "-" + layer
+        movingChildren.push(cname)
+      }
+
+      var nname = name, ttimes = times
+      for (var kkk=0; kkk<movingChildren.length; kkk++) {
+        // delete child
+        var movingChild = movingChildren[kkk]
+        header[layer+kkk].get(nname).children[ttimes].shift()
+        if (header[layer+kkk].get(nname).children[ttimes].length == 0) {
+          header[layer+kkk].get(nname).children.splice(ttimes, 1)
+        }
+        // headerInfo.cellNum -= 1;
+        // header[layer].set(name, headerInfo);
+        
+        // delete parent
+        var cheaderInfo = JSON.parse(JSON.stringify(header[layer + kkk + 1].get(movingChild)));
+        // var pindex = cheaderInfo.parent.indexOf(name)
+        var pindex;
+        for (var i = 0; i < cheaderInfo.parent.length; i++) {
+          if (
+            cheaderInfo.parent[i].name == nname &&
+            cheaderInfo.parent[i].ordinal == ttimes
+          ) {
+            pindex = i;
+            break;
+          }
+        }
+        cheaderInfo.parent.splice(pindex, 1);
+        // var deleteRange = cheaderInfo.range.splice(pindex, 1);
+        // var deleteIndex = deleteRange[0].start;
+        if (cheaderInfo.parent.length == 0  && cheaderInfo.children.length == 0) {
+          header[layer + kkk + 1].delete(movingChild);
+        } else {
+          header[layer + kkk + 1].set(movingChild, cheaderInfo);
+        }
+        ttimes = pindex
+
+        // // modify 'ranges'
+        // for (var i = 0; i < header.length; i++) {
+        //   for (var item of header[i]) {
+        //     var info = item[1];
+        //     var ranges = info.range;
+        //     for (var r = 0; r < ranges.length; r++) {
+        //       if (ranges[r].start > deleteIndex) {
+        //         ranges[r].start -= 1;
+        //       }
+        //       if (ranges[r].end > deleteIndex) {
+        //         ranges[r].end -= 1;
+        //       }
+        //       info.range = ranges;
+        //       header[i].set(item[0], info);
+        //     }
+        //   }
+        // }
+
+        //modify header2num/num2header/headerDistribution
+        var t = JSON.parse(JSON.stringify(this.header2num.get(movingChild)));
+        var tt = t.splice(pindex, 1);
+        if (t.length == 0) {
+          this.header2num.delete(movingChild);
+        } else {
+          this.header2num.set(movingChild, t);
+        }
+        this.num2header.delete(tt[0]);
+        for (var i = pindex; i < t.length; i++) {
+          var hinfo = JSON.parse(JSON.stringify(this.num2header.get(t[i])));
+          hinfo.times -= 1;
+          this.num2header.set(t[i], hinfo);
+        }
+        var hinfo = JSON.parse(
+          JSON.stringify(this.headerDistribution.get(movingChild))
+        );
+        hinfo.count -= 1;
+        if (hinfo.count == 0) {
+          this.headerDistribution.delete(movingChild);
+        } else {
+          this.headerDistribution.set(movingChild, hinfo);
+        }
+
+        nname = movingChild 
+      } 
+
+      //modify num2seq/seq2num
+      var headerInfo = header[layer].get(name)
+      for (var item of this.seq2num) {
+        var shouldDel = true
+        for (var i=0; i<movingChildren.length; i++) {
+          if (!item[0].has(movingChildren[i])) {
+            shouldDel = false
+            break
+          }
+        }
+        
+        // MAY HAVE BUGS HERE!!!!ATTENTION!!!   
+        if (shouldDel && item[0].has(name) && 
+            (headerInfo.parent.length == 0 || 
+            (headerInfo.parent.length != 0 && item[0].has(headerInfo.parent[times].name)))) {
+          this.num2seq.delete(item[1].num);
+          this.seq2num.delete(item[0]);
+        } 
+      }
+
+      // modify heightList/widthList
+      if (isRow) {
+        this.markRowHeightList = this.set_list_length(
+          this.markRowHeightList,
+          this.markRowHeightList.length - 1,
+          0
+        );
+        this.send_change_height_signal();
+      } else {
+        this.markColumnWidthList = this.set_list_length(
+          this.markColumnWidthList,
+          this.markColumnWidthList.length - 1,
+          0
+        );
+        this.send_change_width_signal();
+      }
+
+      // modify ranges
+      for (var i = 0; i < header.length; i++) {
+        for (var item of header[i].values()) {
+          item.range = [];
+        }
+      }
+      cal_header_range(header)
+    },
+    transform_2stacked(name, header, times, isRow) {
+      if (this.isCurrFlat)  return
+      // this.handle_zoom_in()
+      this.clear_selected_cell(true)
+      this.clear_selected_header()
+      this.$bus.$emit("change-header")
+      var distributionInfo = JSON.parse(JSON.stringify(this.headerDistribution.get(name)))
+      var layer = distributionInfo.layer
+      var headerInfo = JSON.parse(JSON.stringify(header[layer].get(name)))
+      if (headerInfo.children[times].length == 0)  return // no child
+      if (headerInfo.children[times][0][0]!="&")  return // already stacked
+
+      var headerange
+      if (isRow)  headerange = this.headerRange.right
+      else headerange = this.headerRange.bottom
+      // not second last layer
+      if (layer < headerange-1) { 
+        console.log("not second last layer, 2stacked supplement.")
+        this.transform_2stacked_advanced(name, header, times, isRow, headerange, layer)
+        return
+      }
+      
+      // delete child
+      var movingChild = headerInfo.children[times].shift();
+      headerInfo.cellNum -= 1;
+      header[layer].set(name, headerInfo);
+
+      // delete parent
+      var cheaderInfo = JSON.parse(
+        JSON.stringify(header[layer + 1].get(movingChild))
+      );
+      // var pindex = cheaderInfo.parent.indexOf(name)
+      var pindex;
+      for (var i = 0; i < cheaderInfo.parent.length; i++) {
+        if (
+          cheaderInfo.parent[i].name == name &&
+          cheaderInfo.parent[i].ordinal == times
+        ) {
+          pindex = i;
+          break;
+        }
+      }
+      cheaderInfo.parent.splice(pindex, 1);
+      var deleteRange = cheaderInfo.range.splice(pindex, 1);
+      var deleteIndex = deleteRange[0].start;
+      if (cheaderInfo.parent.length == 0) {
+        header[layer + 1].delete(movingChild);
+      } else {
+        header[layer + 1].set(movingChild, cheaderInfo);
+      }
+
+      // modify 'ranges'
+      for (var i = 0; i < header.length; i++) {
+        for (var item of header[i]) {
+          var info = item[1];
+          var ranges = info.range;
+          for (var r = 0; r < ranges.length; r++) {
+            if (ranges[r].start > deleteIndex) {
+              ranges[r].start -= 1;
+            }
+            if (ranges[r].end > deleteIndex) {
+              ranges[r].end -= 1;
+            }
+            info.range = ranges;
+            header[i].set(item[0], info);
+          }
+        }
+      }
+
+      //modify header2num/num2header/headerDistribution
+      var t = JSON.parse(JSON.stringify(this.header2num.get(movingChild)));
+      var tt = t.splice(pindex, 1);
+      if (t.length == 0) {
+        this.header2num.delete(movingChild);
+      } else {
+        this.header2num.set(movingChild, t);
+      }
+      this.num2header.delete(tt[0]);
+      for (var i = pindex; i < t.length; i++) {
+        var hinfo = JSON.parse(JSON.stringify(this.num2header.get(t[i])));
+        hinfo.times -= 1;
+        this.num2header.set(t[i], hinfo);
+      }
+      var hinfo = JSON.parse(
+        JSON.stringify(this.headerDistribution.get(movingChild))
+      );
+      hinfo.count -= 1;
+      if (hinfo.count == 0) {
+        this.headerDistribution.delete(movingChild);
+      } else {
+        this.headerDistribution.set(movingChild, hinfo);
+      }
+
+      //modify num2seq/seq2num
+      for (var item of this.seq2num) {
+        if (
+          item[0].has(name) &&
+          item[0].has(movingChild) &&
+          (headerInfo.parent.length == 0 ||
+            (headerInfo.parent.length != 0 &&
+              item[0].has(headerInfo.parent[times].name)))
+        ) {
+          this.num2seq.delete(item[1].num);
+          this.seq2num.delete(item[0]);
+        }
+      }
+
+      // modify heightList/widthList
+      if (isRow) {
+        this.markRowHeightList = this.set_list_length(
+          this.markRowHeightList,
+          this.markRowHeightList.length - 1,
+          0
+        );
+        this.send_change_height_signal();
+      } else {
+        this.markColumnWidthList = this.set_list_length(
+          this.markColumnWidthList,
+          this.markColumnWidthList.length - 1,
+          0
+        );
+        this.send_change_width_signal();
+      }
+    },
+    transform_2linear_supplement(name, header, times, isRow, curLayer, headerRange, resArr) {
+      if (curLayer == headerRange) {
+        var tmpList
+        if (isRow)  tmpList = this.columnWidthList
+        else tmpList = this.rowHeightList
+
+        var curcoord = header[curLayer].get(name).range[times].start
+        for (var j=0; j<tmpList.length-headerRange-1; j++) {
+          var range = isRow ? [curcoord, j] : [j, curcoord]
+          var set = this.valueDistribution.get(range.toString());
+          var value = this.seq2num.get(set).value
+          resArr[j].push(value)
+        }
+        return
+      }
+      var headerInfo = header[curLayer].get(name)
+      var linearFlag = false
+      for (var i=0; i<headerInfo.children[times].length; i++) {
+        var cname = headerInfo.children[times][i]
+        if (cname[0] == "&") {  // first child is &, already linear
+          linearFlag = true
+          break
+        }
+
+        // search for child's times
+        var ctimes = null
+        var pinfo = header[curLayer+1].get(cname).parent
+        for (var j=0; j<pinfo.length; j++) {
+          if (pinfo[j].name == name && pinfo[j].ordinal == times) {
+            ctimes = j
+            break
+          }
+        }
+
+        this.transform_2linear_supplement(cname, header, ctimes, isRow, curLayer+1, headerRange, resArr)
+      }
+
+      if (linearFlag == true) {
+        var tmpList
+        if (isRow)  tmpList = this.columnWidthList
+        else tmpList = this.rowHeightList
+
+        var curcoord = header[curLayer].get(name).range[times].start
+        for (var j=0; j<tmpList.length-headerRange-1; j++) {
+          var range = isRow ? [curcoord, j] : [j, curcoord]
+          var set = this.valueDistribution.get(range.toString());
+          var value = this.seq2num.get(set).value
+          resArr[j].push(value)
+        }
+        return
+      }
+
+    },
+    transform_2linear_advanced(name, header, times, isRow, type, headerange, layer) {
+      var tmpList
+      if (isRow)  tmpList = this.columnWidthList
+      else tmpList = this.rowHeightList
+
+      var resArr = []
+      for (var j=0; j<tmpList.length-headerange-1; j++) {
+        var tmp = []
+        resArr.push(tmp)
+      }
+      this.transform_2linear_supplement(name, header, times, isRow, layer, headerange, resArr)
+
+      // calculate values
+      var sumArr = [], avgArr = [], minArr = [], maxArr = [];
+      for (var i=0; i<resArr.length; i++) {
+        var sum = 0, count = 0, avg, min, max;
+        for (var j=0; j<resArr[i].length; j++) {
+          var v = resArr[i][j]
+          sum += Number(v);
+          count += 1;
+        }
+        sum = Number(sum).toFixed(1);
+        if (sum == 0) sum = Number(sum).toFixed(0)
+        avg = Number(sum / count).toFixed(1);
+        if (avg == 0) avg = Number(avg).toFixed(0)
+        max = Number(Math.max.apply(null, resArr[i]));
+        min = Number(Math.min.apply(null, resArr[i]));
+
+        sumArr.push(sum)
+        avgArr.push(avg)
+        maxArr.push(max)
+        minArr.push(min)
+      }
+      
+      var res
+      switch (type) {
+        case "sum":
+          res = sumArr;
+          break;
+        case "avg":
+          res = avgArr;
+          break;
+        case "max":
+          res = maxArr;
+          break;
+        case "min":
+          res = minArr;
+          break;
+      }
+      // console.log("resarr", res)
+
+      // new child name list
+      var newChildPrefix = (isRow && !this.hasTransposed) || (!isRow && this.hasTransposed) ? "&-row-" : "&-col-" 
+      var newChildNameList = []
+      for (var i=layer+1; i<=headerange; i++) {
+        var newName = newChildPrefix + i + "-" + layer
+        newChildNameList.push({layer:i, name:newName})
+      }
+
+      // calculate sequence
+      var coorda = header[layer].get(name).range[times].start
+      var coordb = header[layer].get(name).range[times].end
+      // for (var [key, value] of header[layer]) {
+      //   if (coorda == null)
+      //     coorda = value.range[0].start
+      //   else if (coordb == null)
+      //     coordb = value.range[0].ends
+      //   else
+      //     break
+      //   // attention! may have bugs here!
+      // }
+
+      for (var j=0; j<tmpList.length-headerange-1; j++) {
+        var rangea = isRow ? [coorda, j] : [j, coorda]
+        var rangeb = isRow ? [coordb, j] : [j, coordb]
+        var seta = this.valueDistribution.get(rangea.toString());
+        var setb = this.valueDistribution.get(rangeb.toString());
+        var seq = new Set([...seta].filter((x) => setb.has(x)));
+        var arra = Array.from(seta);
+        var arrseq = Array.from(seq);
+        // find the different index
+        var flag=[];
+        for (var t = 0; t < arra.length; t++) {
+          if (arrseq.indexOf(arra[t]) == -1) {
+            flag.push(t);
+          }
+        }
+        for (var t=0; t<flag.length; t++) {
+          arrseq.splice(flag[t], 0, newChildNameList[t].name);
+        }
+        seq = new Set(arrseq);
+        this.num2seq.set(this.valueIndex, {value: res[j], seq: seq });
+        this.seq2num.set(seq, { value: res[j], num: this.valueIndex++ });
+      }
+
+      //modify header2num/num2header/headerDistribution
+      var nname=name, ttimes=times
+      for (var t=0; t<newChildNameList.length; t++) {
+        var newChild = newChildNameList[t].name
+        var newChildLayer = newChildNameList[t].layer
+        // add child to parent
+        var hi = header[newChildLayer-1].get(nname).children
+        if (hi.length == ttimes) {
+          hi.push([newChild])
+        }
+        else {
+          hi[ttimes].unshift(newChild)
+        }
+        
+        // add parent to child
+        var addIndex = header[newChildLayer-1].get(nname).range[ttimes].start; // add before the first child
+        var addRange = { start: addIndex, end: addIndex };
+        var cheaderInfo, pindex;
+        if (header[newChildLayer].has(newChild)) {
+          cheaderInfo = JSON.parse(
+            JSON.stringify(header[newChildLayer].get(newChild))
+          );
+          for (pindex = 0; pindex < cheaderInfo.range.length; pindex++) {
+            if (cheaderInfo.range[pindex].start > addIndex) {
+              break;
+            }
+          }
+          cheaderInfo.parent.splice(pindex, 0, { name: nname, ordinal: ttimes });
+          cheaderInfo.range.splice(pindex, 0, addRange);
+          ttimes = cheaderInfo.range.length-1
+        } 
+        else {
+          cheaderInfo = new Object();
+          cheaderInfo.range = [addRange];
+          cheaderInfo.cellNum = 1;
+          cheaderInfo.children = [];
+          cheaderInfo.parent = [{ name: nname, ordinal: ttimes }];
+          cheaderInfo.isFullyConn = true;
+          ttimes = 0
+        }
+        var arrh = Array.from(header[newChildLayer])
+        if (arrh[0][0] != newChild) {
+          arrh.unshift([newChild, cheaderInfo])
+        }
+        else {
+          arrh[0][1] = cheaderInfo
+        }
+        var newmp = new Map(arrh)
+        header[newChildLayer] = newmp
+
+
+        if (this.headerDistribution.has(newChild)) {
+          var hinfo = JSON.parse(JSON.stringify(this.headerDistribution.get(newChild)));
+          var ttt = JSON.parse(JSON.stringify(this.header2num.get(newChild)));
+          ttt.push(this.newHeaderIndex);
+          this.header2num.set(newChild, ttt);
+          var tt = { value: newChild, times: hinfo.count++ };
+          this.num2header.set(this.newHeaderIndex++, tt);
+          this.headerDistribution.set(newChild, hinfo);
+        } 
+        else {
+          this.header2num.set(newChild, [this.newHeaderIndex]);
+          this.num2header.set(this.newHeaderIndex++, {
+            value: newChild,
+            times: 0,
+          });
+          this.headerDistribution.set(newChild, {
+            isRowHeader: isRow,
+            layer: newChildLayer,
+            count: 1,
+          });
+        }
+
+        // // modify 'ranges' and 'cellNum'
+        // for (var i = 0; i < header.length; i++) {
+        //   for (var item of header[i]) {
+        //     var info = item[1];
+        //     var ranges = info.range;
+        //     for (var r = 0; r < ranges.length; r++) {
+        //       if (ranges[r].start >= addIndex) {
+        //         if (
+        //           ranges[r].start == addIndex &&
+        //           (i <= layer || item[0] == newChild)
+        //         ) {
+        //           // do nothing
+        //         } else {
+        //           ranges[r].start += 1;
+        //         }
+        //       }
+        //       if (ranges[r].end >= addIndex) {
+        //         if (ranges[r].end == addIndex && item[0] == newChild) {
+        //           // do nothing
+        //         } else {
+        //           ranges[r].end += 1;
+        //         }
+        //       }
+        //     }
+        //     info.range = ranges;
+        //     header[i].set(item[0], info);
+        //   }
+        // }
+
+        nname = newChild
+      }
+
+      // modify heightList/widthList
+      if (isRow) {
+        this.markRowHeightList = this.set_list_length(
+          this.markRowHeightList,
+          this.markRowHeightList.length + 1,
+          this.cellHeight
+        );
+        this.send_change_height_signal();
+      } else {
+        this.markColumnWidthList = this.set_list_length(
+          this.markColumnWidthList,
+          this.markColumnWidthList.length + 1,
+          this.cellWidth
+        );
+        this.send_change_width_signal();
+      }
+
+      for (var i = 0; i < header.length; i++) {
+        for (var item of header[i].values()) {
+          item.range = [];
+        }
+      }
+      cal_header_range(header)
+    },
+    transform_2linear(name, header, times, isRow, type) {
+      if (this.isCurrFlat)  return
+      // this.handle_zoom_in()
+      this.clear_selected_cell(true)
+      this.clear_selected_header()
+      this.$bus.$emit("change-header")
+      var distributionInfo = JSON.parse(JSON.stringify(this.headerDistribution.get(name)))
+      var layer = distributionInfo.layer
+      var headerInfo = JSON.parse(JSON.stringify(header[layer].get(name)))
+      if (headerInfo.children[times].length == 0)  return // no child
+      if (headerInfo.children[times][0][0]=="&")  { // already linear
+        return
+      }
+
+      var headerange
+      if (isRow)  headerange = this.headerRange.right
+      else headerange = this.headerRange.bottom
+      
+      // not second last layer
+      if (layer < headerange-1) { 
+        console.log("not second last layer, 2linear supplement.")
+        this.transform_2linear_advanced(name, header, times, isRow, type, headerange, layer)
+        return
+      }
+
+      // add child
+      var newChild =
+        (isRow && !this.hasTransposed) || (!isRow && this.hasTransposed)
+          ? "&-row-" + (layer + 1) + "-" + layer
+          : "&-col-" + (layer + 1) + "-" + layer;
+      headerInfo.children[times].unshift(newChild);
+      header[layer].set(name, headerInfo);
+
+      // add parent
+      var addIndex = headerInfo.range[times].start; // add before the first child
+      var addRange = { start: addIndex, end: addIndex };
+      var cheaderInfo, pindex;
+      if (header[layer + 1].has(newChild)) {
+        cheaderInfo = JSON.parse(
+          JSON.stringify(header[layer + 1].get(newChild))
+        );
+        for (pindex = 0; pindex < cheaderInfo.range.length; pindex++) {
+          if (cheaderInfo.range[pindex].start > addIndex) {
+            break;
+          }
+        }
+        cheaderInfo.parent.splice(pindex, 0, { name: name, ordinal: times });
+        cheaderInfo.range.splice(pindex, 0, addRange);
+      } else {
+        cheaderInfo = new Object();
+        cheaderInfo.range = [addRange];
+        cheaderInfo.cellNum = 1;
+        cheaderInfo.children = [];
+        cheaderInfo.parent = [{ name: name, ordinal: times }];
+        cheaderInfo.isFullyConn = true;
+      }
+      var arrh = Array.from(header[layer + 1])
+      if (arrh[0][0] != newChild) {
+        arrh.unshift([newChild, cheaderInfo])
+      }
+      else {
+        arrh[0][1] = cheaderInfo
+      }
+      var newmp = new Map(arrh)
+      header[layer+1] = newmp
+      // header[layer + 1].set(newChild, cheaderInfo);
+      // console.log(header[layer+1])
+
+      //add values
+      if (isRow) {
+        for (var j = 0; j < this.columnWidthList.length - this.headerRange.right - 1; j++) {
+          var range = JSON.parse(JSON.stringify(header[layer].get(name).range[times]));
+
+          // calculate seq
+          var rangea = [range.start, j];
+          var rangeb = [range.start + 1, j];
+          var seta = this.valueDistribution.get(rangea.toString());
+          var setb = this.valueDistribution.get(rangeb.toString());
+          var seq = new Set([...seta].filter((x) => setb.has(x)));
+          var arra = Array.from(seta);
+          var arrseq = Array.from(seq);
+          // find the different index
+          var flag;
+          for (var t = 0; t < arra.length; t++) {
+            if (arrseq.indexOf(arra[t]) == -1) {
+              flag = t;
+              break;
+            }
+          }
+          arrseq.splice(flag, 0, newChild);
+          seq = new Set(arrseq);
+
+          var res,
+            tmpdata = [];
+          var sum = 0,
+            count = 0,
+            avg,
+            min,
+            max;
+          for (var i = range.start; i <= range.end; i++) {
+            var curSeq = this.valueDistribution.get([i, j].toString());
+            var v = this.seq2num.get(curSeq).value;
+            tmpdata.push(v);
+            sum += Number(v);
+            count += 1;
+          }
+          sum = Number(sum).toFixed(1);
+          if (sum == 0) sum = Number(sum).toFixed(0)
+
+          avg = Number(sum / count).toFixed(1);
+          if (avg == 0) avg = Number(avg).toFixed(0)
+
+          max = Number(Math.max.apply(null, tmpdata));
+          min = Number(Math.min.apply(null, tmpdata));
+
+          switch (type) {
+            case "sum":
+              res = sum;
+              break;
+            case "avg":
+              res = avg;
+              break;
+            case "max":
+              res = max;
+              break;
+            case "min":
+              res = min;
+              break;
+          }
+
+          this.num2seq.set(this.valueIndex, { value: res, seq: seq });
+          this.seq2num.set(seq, { value: res, num: this.valueIndex++ });
+        }
+      } 
+      else {
+        for (
+          var i = 0;
+          i < this.rowHeightList.length - this.headerRange.bottom - 1;
+          i++
+        ) {
+          var range = JSON.parse(
+            JSON.stringify(header[layer].get(name).range[times])
+          );
+
+          // calculate seq
+          var rangea = [i, range.start];
+          var rangeb = [i, range.start + 1];
+          var seta = this.valueDistribution.get(rangea.toString());
+          var setb = this.valueDistribution.get(rangeb.toString());
+          var seq = new Set([...seta].filter((x) => setb.has(x)));
+          var arra = Array.from(seta);
+          var arrseq = Array.from(seq);
+          // find the different index
+          var flag;
+          for (var t = 0; t < arra.length; t++) {
+            if (arrseq.indexOf(arra[t]) == -1) {
+              flag = t;
+              break;
+            }
+          }
+          arrseq.splice(flag, 0, newChild);
+          seq = new Set(arrseq);
+
+          var res,
+            tmpdata = [];
+          var sum = 0,
+            count = 0,
+            avg,
+            min,
+            max;
+          for (var j = range.start; j <= range.end; j++) {
+            var curSeq = this.valueDistribution.get([i, j].toString());
+            var v = this.seq2num.get(curSeq).value;
+            tmpdata.push(v);
+            sum += Number(v);
+            count += 1;
+          }
+          sum = Number(sum).toFixed(1);
+          avg = Number(sum / count).toFixed(1);
+          max = Number(Math.max.apply(null, tmpdata));
+          min = Number(Math.min.apply(null, tmpdata));
+
+          switch (type) {
+            case "sum":
+              res = sum;
+              break;
+            case "avg":
+              res = avg;
+              break;
+            case "max":
+              res = max;
+              break;
+            case "min":
+              res = min;
+              break;
+          }
+          this.num2seq.set(this.valueIndex, { value: res, seq: seq });
+          this.seq2num.set(seq, { value: res, num: this.valueIndex++ });
+        }
+      }
+
+      // modify 'ranges' and 'cellNum'
+      for (var i = 0; i < header.length; i++) {
+        for (var item of header[i]) {
+          var info = item[1];
+          var ranges = info.range;
+          for (var r = 0; r < ranges.length; r++) {
+            if (ranges[r].start >= addIndex) {
+              if (
+                ranges[r].start == addIndex &&
+                (i <= layer || item[0] == newChild)
+              ) {
+                // do nothing
+              } else {
+                ranges[r].start += 1;
+              }
+            }
+            if (ranges[r].end >= addIndex) {
+              if (ranges[r].end == addIndex && item[0] == newChild) {
+                // do nothing
+              } else {
+                ranges[r].end += 1;
+              }
+            }
+          }
+          info.range = ranges;
+          header[i].set(item[0], info);
+        }
+      }
+
+      //modify header2num/num2header/headerDistribution
+      if (this.headerDistribution.has(newChild)) {
+        var hinfo = JSON.parse(
+          JSON.stringify(this.headerDistribution.get(newChild))
+        );
+        var t = JSON.parse(JSON.stringify(this.header2num.get(newChild)));
+        t.push(this.newHeaderIndex);
+        this.header2num.set(newChild, t);
+        var tt = { value: newChild, times: hinfo.count++ };
+        this.num2header.set(this.newHeaderIndex++, tt);
+        this.headerDistribution.set(newChild, hinfo);
+      } else {
+        this.header2num.set(newChild, [this.newHeaderIndex]);
+        this.num2header.set(this.newHeaderIndex++, {
+          value: newChild,
+          times: 0,
+        });
+        this.headerDistribution.set(newChild, {
+          isRowHeader: isRow,
+          layer: layer + 1,
+          count: 1,
+        });
+      }
+
+      // modify heightList/widthList
+      if (isRow) {
+        this.markRowHeightList = this.set_list_length(
+          this.markRowHeightList,
+          this.markRowHeightList.length + 1,
+          this.cellHeight
+        );
+        this.send_change_height_signal();
+      } else {
+        this.markColumnWidthList = this.set_list_length(
+          this.markColumnWidthList,
+          this.markColumnWidthList.length + 1,
+          this.cellWidth
+        );
+        this.send_change_width_signal();
+      }
+    },
+    // transform_derive() {
+    //   this.handle_zoom_in()
+    //   this.clear_selected_cell(true);
+    //   this.$bus.$emit("change-header");
+    // },
+    transform_unnamed(name, oriHeader, newHeader, isRow) {
+      if (this.isCurrFlat)  return
+      // this.handle_zoom_in();
+      this.clear_selected_cell(true);
+      this.clear_selected_header()
+      this.$bus.$emit("change-header");
+      var distributionInfo = this.headerDistribution.get(name);
+      var currLayerNum = distributionInfo.layer;
+      if (currLayerNum != oriHeader.length - 1 || currLayerNum == 0) return; // only support the last layer
+      var upLayerNum = currLayerNum - 1;
+
+      // check if it's able to transform
+      var reference = null,
+        refernum = null;
+      for (var item of oriHeader[upLayerNum].keys()) {
+        if (reference == null) {
+          reference = oriHeader[upLayerNum].get(item).children[0];
+          refernum = oriHeader[upLayerNum].get(item).children.length;
+        }
+        // if (refernum != oriHeader[upLayerNum].get(item).children.length) {
+        //   return  // not fully-conn, can't change
+        // }
+        for (
+          var i = 0;
+          i < oriHeader[upLayerNum].get(item).children.length;
+          i++
+        ) {
+          if (
+            JSON.stringify(reference) !=
+            JSON.stringify(oriHeader[upLayerNum].get(item).children[i])
+          ) {
+            return; // not fully-conn, can't change
+          }
+        }
+      }
+
+      var newChildren = Array.from(oriHeader[upLayerNum])[0][1].children[0];
+      var newChildrenNum = newChildren.length;
+
+      // get new parent list
+      var newParent = [],
+        ordList = new Map();
+      for (var [key, value] of newHeader[0]) {
+        this.get_new_parent_list(key, value, 0, newHeader, newParent, ordList);
+      }
+
+      // add children for newheader's pre last layer
+      var newLayerNum = newHeader.length,
+        childrenCount = 0;
+      for (var [key, value] of newHeader[newLayerNum - 1]) {
+        for (var i = 0; i < value.range.length; i++) {
+          value.children.push(JSON.parse(JSON.stringify(newChildren)));
+          value.cellNum = newChildrenNum;
+          childrenCount += 1;
+        }
+      }
+
+      // change header & headerDistribution
+      var newLayer = new Map();
+      for (var i = 0; i < newChildren.length; i++) {
+        var name = newChildren[i];
+        this.headerDistribution.set(name, {
+          isRowHeader: !isRow,
+          layer: newLayerNum,
+          count: childrenCount,
+        });
+        var cobj = new Object();
+        cobj["range"] = { start: null, end: null };
+        cobj["cellNum"] = 1;
+        cobj["children"] = [];
+        cobj["parent"] = JSON.parse(JSON.stringify(newParent));
+        cobj["isFullyConn"] = true;
+        newLayer.set(name, cobj);
+      }
+      newHeader.push(newLayer);
+
+      // delete children of oriheader
+      for (var [key, value] of oriHeader[currLayerNum - 1]) {
+        value.children = [];
+        value.cellNum = 1;
+      }
+      oriHeader.splice(currLayerNum, 1);
+
+      // console.log("origin", oriHeader);
+      // console.log("new", newHeader);
+
+      // re-calculate header rect nums
+      for (var [key, value] of newHeader[newHeader.length - 1]) {
+        var i = this.header2num.get(key).length;
+        var targetlen = this.headerDistribution.get(key).count;
+        if (i > targetlen) {
+          // remove redundancy
+          for (var j = targetlen; j < i - 1; j++) {
+            var rmindex = this.header2num.get(key).pop();
+            this.num2header.delete(rmindex);
+          }
+        } else {
+          // add new
+          for (i; i < targetlen; i++) {
+            this.num2header.set(this.newHeaderIndex, { value: key, times: i });
+            var tmpindex = this.header2num.get(key);
+            tmpindex.push(this.newHeaderIndex++);
+          }
+        }
+      }
+
+      // change header range & height/width list
+      if (isRow) {
+        var longer =
+          [this.markColumnWidthList.length - (this.headerRange.right + 1)] *
+            newChildrenNum +
+          this.headerRange.right;
+        var shorter =
+          [this.markRowHeightList.length - (this.headerRange.bottom + 1)] /
+            newChildrenNum +
+          (this.headerRange.bottom + 2);
+        this.markRowHeightList = this.set_list_length(
+          this.markRowHeightList,
+          shorter,
+          this.cellHeight
+        );
+        this.markColumnWidthList = this.set_list_length(
+          this.markColumnWidthList,
+          longer,
+          this.cellWidth
+        );
+
+        this.headerRange.bottom += 1;
+        this.headerRange.right -= 1;
+      } else {
+        var shorter =
+          [this.markColumnWidthList.length - (this.headerRange.right + 1)] /
+            newChildrenNum +
+          (this.headerRange.right + 2);
+        var longer =
+          [this.markRowHeightList.length - (this.headerRange.bottom + 1)] *
+            newChildrenNum +
+          this.headerRange.bottom;
+
+        this.markRowHeightList = this.set_list_length(
+          this.markRowHeightList,
+          longer,
+          this.cellHeight
+        );
+        this.markColumnWidthList = this.set_list_length(
+          this.markColumnWidthList,
+          shorter,
+          this.cellWidth
+        );
+        this.headerRange.bottom -= 1;
+        this.headerRange.right += 1;
+      }
+      this.send_change_height_signal();
+      this.send_change_width_signal();
+    },
+    get_new_parent_list(key, value, layer, header, newParent, ordList) {
+      var ordinal;
+      if (ordList.has(key)) {
+        ordinal = ordList.get(key);
+        ordList.set(key, ordinal + 1);
+      } else {
+        ordinal = 0;
+        ordList.set(key, 1);
+      }
+      if (layer == header.length - 1) {
+        // last layer
+        newParent.push({ name: key, ordinal: ordinal });
+        return;
+      }
+
+      for (var i = 0; i < value.children[ordinal].length; i++) {
+        var name = value.children[ordinal][i];
+        this.get_new_parent_list(
+          name,
+          header[layer + 1].get(name),
+          layer + 1,
+          header,
+          newParent,
+          ordList
+        );
+      }
+    },
+    transform_chg_pos(name, ordinal, header, layer, isChgLeft, isRow) {
+      if (this.isCurrFlat)  return
+      // this.handle_zoom_in()
+      this.clear_selected_cell(true);
+      this.clear_selected_header()
+      this.$bus.$emit("change-header");
+      var arrheader = Array.from(header[layer])
+      var curindex
+      for (var i=0; i<arrheader.length; i++) {
+        if (arrheader[i][0] == name) {
+          curindex = i
+          break
+        }
+      }
+
+      if (curindex==0 && isChgLeft || curindex==arrheader.length-1 && !isChgLeft) return  // can't change
+
+      var orileft, oriright, oriLeftIndex, oriRightIndex
+      if (isChgLeft) {
+        orileft = arrheader[curindex-1][0]
+        oriLeftIndex = curindex - 1
+        oriright = name
+        oriRightIndex = curindex
+      }
+      else {
+        orileft = name
+        oriLeftIndex = curindex
+        oriright = arrheader[curindex+1][0]
+        oriRightIndex = curindex + 1
+      }
+
+      // change header
+      let temp = JSON.parse(JSON.stringify(arrheader[oriLeftIndex]));
+      arrheader[oriLeftIndex] = JSON.parse(JSON.stringify(arrheader[oriRightIndex]));
+      arrheader[oriRightIndex] = temp
+      var newmap = new Map(arrheader)
+      header[layer] = newmap
+
+      // change parent's children
+      if (layer != 0) {
+        for (var [key, value] of header[layer-1]) {
+          var children = value.children
+          for (var i=0; i<children.length; i++) {
+            var lefti = children[i].indexOf(orileft)
+            var righti = children[i].indexOf(oriright)
+            if (lefti==-1 || righti==-1)   continue
+
+            var tmp = JSON.parse(JSON.stringify(children[i][lefti]))
+            children[i][lefti] = JSON.parse(JSON.stringify(children[i][righti]))
+            children[i][righti] = tmp
+          }
+        }
+      }
+
+      // change child's parents
+      if (layer != header.length-1) {
+        for (var [key, value] of header[layer+1]) {
+          var parent = value.parent
+          var lefti = -1, righti = -1
+          for (var i=0; i<parent.length; i++) {
+            if (parent[i].name == orileft) {
+              lefti = i
+            }
+            if (parent[i].name == oriright) {
+              righti = i
+            }
+
+            if (lefti != -1 && righti != -1)  break
+          }
+          if (lefti == -1 || righti == -1) continue
+          
+          var tmp = JSON.parse(JSON.stringify(parent[lefti]))
+          parent[lefti] = JSON.parse(JSON.stringify(parent[righti]))
+          parent[righti] = tmp
+        }
+      }
+
+      for (var i = 0; i < header.length; i++) {
+        for (var item of header[i].values()) {
+          item.range = [];
+        }
+      }
+      cal_header_range(header);
+      this.send_change_width_signal()
+
+    },
+
+    transmit_chosen_to_vis(top, bottom, left, right) {
+      console.log("chosen_area", top, bottom, left, right)
+      var [jsdata, metadata] = get_data_for_transmission(
+        top,
+        bottom,
+        left,
+        right,
+        this.headerRange,
+        this.valueDistribution,
+        this.seq2num,
+        this.rowHeader.length,
+        this.colHeader.length,
+        this.headerDistribution,
+        this.colHeader,
+        this.rowHeader
+      );
+      var pos = get_pos_for_transmission(
+        top,
+        bottom,
+        left,
+        right,
+        this.markWidth,
+        this.markHeight,
+        this.widthRangeList,
+        this.heightRangeList
+      );
+      let hp_pos = {"top":this.selectedArea.top - this.headerRange.bottom - 1,
+              "bottom":this.selectedArea.bottom - this.headerRange.bottom - 1,
+              "left":this.selectedArea.left - this.headerRange.right - 1,
+              "right":this.selectedArea.right - this.headerRange.right - 1};
+      console.log("visualize-selectedData-transmit_chosen_to_vis", pos, jsdata, metadata, hp_pos);
+      this.$bus.$emit("visualize-selectedData", pos, jsdata, metadata, hp_pos);
+      this.$bus.$emit("transmit-recommend-value-to-panel", this.prioritySliderValue, this.typeSelectValue, this.directionSelectValue)
+
+      // // single unit, send recommendation too
+      // if (top==bottom && left==right) {
+      //   this.transmit_unit_recommendation_to_vis()
+      //   // this.transmit_unit_recommendation_to_vis(pos, this.directionSelectValue)
+      // }
+    },
+    generate_vega_recommendation_data(removeZero=false, recList=null, hp_pos_rec_list=null) {
+      var dataArray = [], data = this.recommendData;
+      
+      
+
+      for (var i = 0; i < data.length; i++) {
+        var area = data[i]
+        if (recList!=null) {    // 筛选可能有问题的优先级范围
+          let hasRec=false
+          for (var j=0; j<recList.length; j++) {
+            if (recList[j][0] == area.top && recList[j][1] == area.bottom && recList[j][2] == area.left&& recList[j][3] == area.right) {
+              hasRec = true
+              break
+            }
+          }
+          if (!hasRec) {  //此范围不在应该推荐的优先级范围内
+            continue  
+          }
+        }
+
+        var top = area.top + this.headerRange.bottom + 1;
+        var bottom = area.bottom + this.headerRange.bottom + 1;
+        var left = area.left + this.headerRange.right + 1;
+        var right = area.right + this.headerRange.right + 1;
+
+        var [jsdata, metadata] = get_data_for_transmission(
+          top,
+          bottom,
+          left,
+          right,
+          this.headerRange,
+          this.valueDistribution,
+          this.seq2num,
+          this.rowHeader.length,
+          this.colHeader.length,
+          this.headerDistribution,
+          this.colHeader,
+          this.rowHeader,
+          removeZero
+        );
+        var pos = get_pos_for_transmission(
+          top,
+          bottom,
+          left,
+          right,
+          this.markWidth,
+          this.markHeight,
+          this.widthRangeList,
+          this.heightRangeList
+        );
+        // console.log("generate_vega_recommendation_data")
+        // console.log("recListrecList", data.length, hp_pos_rec_list.length)
+        // console.log("hp_pos_rec_list", data, hp_pos_rec_list)
+        let hp_pos = {"top":this.selectedArea.top - this.headerRange.bottom - 1,
+              "bottom":this.selectedArea.bottom - this.headerRange.bottom - 1,
+              "left":this.selectedArea.left - this.headerRange.right - 1,
+              "right":this.selectedArea.right - this.headerRange.right - 1};
+        // if (hp_pos_rec_list === null){
+        //   var obj = {
+        //     position: pos,
+        //     visData: jsdata,
+        //     metaData: metadata,
+        //     priority: 0,
+        //     hp_pos:hp_pos,
+        //   };
+        //   console.log("hp_pos_rec_list === null");
+        // }
+        // else{
+          var obj = {
+            position: pos,
+            visData: jsdata,
+            metaData: metadata,
+            priority: 0,
+            hp_pos_rec: area,
+            hp_pos:hp_pos,
+          };
+          // console.log("areaareaareaarea", area);
+        // }
+        dataArray.push(obj);
+      }
+      return dataArray
+    },
+    transmit_recommendation_to_vis() {
+      let dataArray = this.generate_vega_recommendation_data(false, null);
+      var selectedPos = {"top":this.selectedArea.top - this.headerRange.bottom - 1,
+              "bottom":this.selectedArea.bottom - this.headerRange.bottom - 1,
+              "left":this.selectedArea.left - this.headerRange.right - 1,
+              "right":this.selectedArea.right - this.headerRange.right - 1};
+      // console.log("recommend-data-to-send", dataArray);
+      this.draw_insight_marker(selectedPos.top, selectedPos.bottom, selectedPos.left, selectedPos.right, true, 'none');
+      for (let area of this.recommendData){
+        this.draw_insight_marker(area.top, area.bottom, area.left, area.right, true, 'none');
+      }
+      console.log("generate_vega_recommendation_data", this.selectedArea, this.recommendData, dataArray);
+      // this.$bus.$emit("RLPanel-add-user-icon_reclist", this.selectedArea, this.recommendData);
+      this.$bus.$emit("RLPanel-add-user-icon_reclist", selectedPos, this.recommendData);
+      // 在这里送了数据
+      this.$bus.$emit("visualize-recommendData", dataArray);
+    },
+    transmit_unit_recommendation_to_vis() {
+      console.log("transmit unit recommendation!!!!!");
+
+      var selectedPos = get_pos_for_transmission(
+        this.selectedArea.top,
+        this.selectedArea.bottom,
+        this.selectedArea.left,
+        this.selectedArea.right,
+        this.markWidth,
+        this.markHeight,
+        this.widthRangeList,
+        this.heightRangeList
+      );
+
+      var visdata = this.generate_unit_recommendation_data(this.selectedArea.top,this.selectedArea.left, selectedPos)
+
+      var meta = { x: { range: 1 }, y: { range: 1 } };
+      var metadata = JSON.stringify(meta);
+
+      let hp_pos = {"top":this.selectedArea.top - this.headerRange.bottom - 1,
+              "bottom":this.selectedArea.bottom - this.headerRange.bottom - 1,
+              "left":this.selectedArea.left - this.headerRange.right - 1,
+              "right":this.selectedArea.right - this.headerRange.right - 1};
+      // console.log("visualize-selectedData-transmit_unit_recommendation_to_vis", selectedPos, visdata, metadata, hp_pos);
+      // console.log("transmit_unit_recommendation_to_vis", this.selectedArea, this.recommendData);
+      this.$bus.$emit("visualize-selectedData", selectedPos, visdata, metadata, hp_pos);
+      // console.log("UnitUnitUnitUnitUnitUnit", hp_pos);
+      // console.log("transmit-recommend-value-to-panel-", this.prioritySliderValue, this.typeSelectValue, this.directionSelectValue);
+      this.$bus.$emit("transmit-recommend-value-to-panel", this.prioritySliderValue, this.typeSelectValue, this.directionSelectValue);
+    },
+    generate_unit_recommendation_data(ctop, cleft, selectedPos) {
+      var data = this.recommendData;
+      // console.log("this.recommendata", data)
+      var vis = [];
+      // add chosen value
+      var value = get_unit_data_for_transmission(
+        ctop - this.headerRange.bottom - 1,
+        cleft - this.headerRange.right - 1,
+        this.valueDistribution,
+        this.seq2num
+      );
+      var obj = { position: selectedPos, value: value, priority: 0 };
+      vis.push(obj);
+      // console.log("obj", obj);
+
+      for (var i = 0; i < data.length; i++) {
+        var area = data[i]
+        var value = get_unit_data_for_transmission(
+          area.top,
+          area.left,
+          this.valueDistribution,
+          this.seq2num
+        );
+
+        var top = area.top + this.headerRange.bottom + 1;
+        var bottom = area.bottom + this.headerRange.bottom + 1;
+        var left = area.left + this.headerRange.right + 1;
+        var right = area.right + this.headerRange.right + 1;
+        var pos = get_pos_for_transmission(
+          top,
+          bottom,
+          left,
+          right,
+          this.markWidth,
+          this.markHeight,
+          this.widthRangeList,
+          this.heightRangeList
+        );
+
+        var obj = { position: pos, value: value, priority: 0};
+        vis.push(obj);
+      }
+      var visdata = JSON.stringify(vis);
+      // console.log("visdata", vis);
+
+      return visdata
+    },
+    cal_recommendation_data(top, bottom, left, right, draw=true) {
+      this.recommendDataBoth = [[], [], [], [], []];
+      this.recommendDataRow = [[], [], []];
+      this.recommendDataCol = [[], [], []];
+      this.recommendDataTreeBoth = [[], [], [], [], []];
+      this.recommendDataTreeRow = [[], [], []];
+      this.recommendDataTreeCol = [[], [], []];
+
+      this.rowPriority = {name: [[], [], []], subtree: [[], [], []]}
+      this.colPriority = {name: [[], [], []], subtree: [[], [], []]}
+      this.recommendData = []
+
+      var colRefer = get_reference_node(
+        this.colHeader,
+        left,
+        right,
+        false,
+        this.hasTransposed
+      );
+      var rowRefer = get_reference_node(
+        this.rowHeader,
+        top,
+        bottom,
+        true,
+        this.hasTransposed
+      );
+      // console.log("colRefer", colRefer);
+      // console.log("rowRefer", rowRefer);
+      if (colRefer.length == 0 && rowRefer.length == 0) {
+        console.log("can't recommend!");
+        return;
+      }
+
+      var headerPriority = [
+        { row: [], column: [] },
+        { row: [], column: [] },
+      ];
+      var headerPriorityTree = [
+        { row: [], column: [] },
+        { row: [], column: [] },
+      ]
+
+      if (colRefer.length != 0) {
+        cal_recommendation_by_one_reference( // same name
+          this.rowPriority,
+          this.colPriority,
+          colRefer,
+          top,
+          bottom,
+          left,
+          right,
+          this.colHeader,
+          false,
+          headerPriority,
+          this.recommendDataBoth,
+          this.recommendDataRow,
+          this.recommendDataCol,
+          this.markWidth,
+          this.markHeight,
+          this.widthRangeList,
+          this.heightRangeList,
+          this.headerRange,
+          this.prioritySliderValue,
+          this.directionSelectValue
+        );
+        cal_recommendation_by_one_reference(  // same subtree
+          this.rowPriority,
+          this.colPriority,
+          colRefer,
+          top,
+          bottom,
+          left,
+          right,
+          this.colHeader,
+          false,
+          headerPriorityTree,
+          this.recommendDataTreeBoth,
+          this.recommendDataTreeRow,
+          this.recommendDataTreeCol,
+          this.markWidth,
+          this.markHeight,
+          this.widthRangeList,
+          this.heightRangeList,
+          this.headerRange,
+          this.prioritySliderValue,
+          this.directionSelectValue,
+          true
+        );
+      }
+
+      if (rowRefer.length != 0) {
+        cal_recommendation_by_one_reference(  // same name
+          this.rowPriority,
+          this.colPriority,
+          rowRefer,
+          top,
+          bottom,
+          left,
+          right,
+          this.rowHeader,
+          true,
+          headerPriority,
+          this.recommendDataBoth,
+          this.recommendDataRow,
+          this.recommendDataCol,
+          this.markWidth,
+          this.markHeight,
+          this.widthRangeList,
+          this.heightRangeList,
+          this.headerRange,
+          this.prioritySliderValue,
+          this.directionSelectValue
+        );
+        cal_recommendation_by_one_reference(  // same subtree
+          this.rowPriority,
+          this.colPriority,
+          rowRefer,
+          top,
+          bottom,
+          left,
+          right,
+          this.rowHeader,
+          true,
+          headerPriorityTree,
+          this.recommendDataTreeBoth,
+          this.recommendDataTreeRow,
+          this.recommendDataTreeCol,
+          this.markWidth,
+          this.markHeight,
+          this.widthRangeList,
+          this.heightRangeList,
+          this.headerRange,
+          this.prioritySliderValue,
+          this.directionSelectValue,
+          true
+        );
+      }
+
+      this.draw_recommendation_area(draw) 
+    },
+
+    draw_recommendation_area(draw=true) {
+      this.recommendData = []
+      d3.selectAll(".recommend-area").remove()
+
+      let rData = this.rowType=="name" ? this.rowPriority.name : this.rowPriority.subtree
+      let cData = this.colType=="name" ? this.colPriority.name : this.colPriority.subtree
+      let rPri = this.rowPriorityRange
+      let cPri = this.colPriorityRange
+
+
+      let recData = []
+      for (let r=rPri[0]; r<=rPri[1]; r++) {
+        for (let c=cPri[0]; c<=cPri[1]; c++) {
+          if (r==0 && c==0) continue
+
+          for (let ri=0; ri<rData[r].length; ri++) {
+            for (let ci=0; ci<cData[c].length; ci++) {
+              let top = rData[r][ri].start, bottom = rData[r][ri].end
+              let left = cData[c][ci].start, right = cData[c][ci].end
+              // console.log("ririririri", rPri, cPri, ri, ci)
+              var pos = {top:top, bottom:bottom, left:left, right:right}
+              recData.push(pos)
+              
+              if (draw) {
+                d3.select("#recommendation-area-container").append("rect")
+                  .attr("class", "recommend-area")
+                  .attr("x", this.markWidth + this.widthRangeList[left+this.headerRange.right+1])
+                  .attr("y", this.markHeight + this.heightRangeList[top+this.headerRange.bottom+1])
+                  .attr("width", this.widthRangeList[right+1+this.headerRange.right+1] - this.widthRangeList[left+this.headerRange.right+1])
+                  .attr("height", this.heightRangeList[bottom+1+this.headerRange.bottom+1] - this.heightRangeList[top+this.headerRange.bottom+1])
+                  .style("stroke", "grey")
+                  .style("stroke-width", "0.3px")
+                  .style("fill", "#9ebee1")
+                  .style("fill-opacity", "40%")
+              }
+            }
+          }
+        }
+      }
+      this.recommendData = recData
+    },
+
+    get_header_index(headers, headerlist) {
+      var index;
+      var resrange = { start: null, end: null };
+      for (var i = 0; i < headers.length; i++) {
+        var info = headerlist[i].get(headers[i]);
+        if (i == 0) {
+          // first layer
+          resrange.start = info.range[0].start;
+          resrange.end = info.range[0].end;
+        } else {
+          for (var j = 0; j < info.range.length; j++) {
+            if (
+              info.range[j].start >= resrange.start &&
+              info.range[j].end <= resrange.end
+            ) {
+              resrange.start = info.range[j].start;
+              resrange.end = info.range[j].end;
+            }
+          }
+        }
+      }
+
+      if (resrange.start == resrange.end) {
+        index = resrange.start;
+      } else {
+        console.log("find range error!");
+        return;
+      }
+      return index;
+    },
+    handle_hover_field(name) {
+      // console.log("hover-name", name)
+      var type, index;
+      var haveOffset = false;
+      if (name.indexOf(">") != -1) {
+        // names be like "2001 > summer"
+        haveOffset = true;
+        var headers = name.split(" > ");
+        var isrow = this.headerDistribution.get(headers[0]).isRowHeader;
+        if (isrow) {
+          type = "row";
+          index = this.get_header_index(headers, this.rowHeader);
+          index += this.headerRange.bottom + 1;
+        } else {
+          type = "column";
+          index = this.get_header_index(headers, this.colHeader);
+          index += this.headerRange.right + 1;
+        }
+      } else {
+        type = name.split(" ")[0];
+        if (type == "row") {
+          // names be like "row 1"
+          index = Number(name.split(" ")[1]) - 1;
+        } else if (type == "column") {
+          // names be like "column A"
+          index = this.cal_column_number_with_mark(name.split(" ")[1]) - 1;
+        } else if (type == "value") {
+          console.log("hover value!");
+          return;
+        } else {
+          console.log("hover name error! name", name, "type", type);
+          return;
+        }
+      }
+
+      if (haveOffset) {
+        // should consider offset
+        if (!this.isRecommendState) {
+          this.draw_hover_helper_area(type, index);
+        } else {
+          // should draw hover-helper for recommendation too
+          var refer = isrow
+            ? this.selectedAreaForHoverOffset.top
+            : this.selectedAreaForHoverOffset.left;
+          var offset = index - refer;
+          this.handle_recommend_hover_field(offset, index, isrow);
+        }
+      } else {typeSelectValue
+        this.draw_hover_helper_area(type, index);
+      }
+    },
+    handle_recommend_hover_field(offset, chosenindex, isRow) {
+      // direction
+      var data;
+      if (this.typeSelectValue == "name") {
+        if (this.directionSelectValue.length == 2) data = this.recommendDataBoth;
+        else if (this.directionSelectValue[0] == "row")
+          data = this.recommendDataRow;
+        else if (this.directionSelectValue[0] == "column")
+          data = this.recommendDataCol;
+        else {
+          console.log("recommend data error!");
+          return;
+        }
+      }
+      else if (this.typeSelectValue == "subtree") {
+        if (this.directionSelectValue.length == 2) data = this.recommendDataTreeBoth;
+        else if (this.directionSelectValue[0] == "row")
+          data = this.recommendDataTreeRow;
+        else if (this.directionSelectValue[0] == "column")
+          data = this.recommendDataTreeCol;
+        else {
+          console.log("recommend data error!");
+          return;
+        }
+      }
+
+      // priority
+      var min = this.prioritySliderValue[0],
+        max = this.prioritySliderValue[1];
+
+      var type = isRow ? "row" : "column";
+      var indexArray = new Set();
+      indexArray.add(chosenindex);
+      this.draw_hover_helper_area(type, chosenindex);
+
+      for (var i = min - 1; i <= max - 1; i++) {
+        for (var j = 0; j < data[i].length; j++) {
+          var area = data[i][j];
+          var start = isRow ? area.top : area.left;
+          var end = isRow ? area.bottom : area.right;
+          var resindex = start + offset;
+          if (resindex > end) resindex = end;
+
+          resindex += isRow
+            ? this.headerRange.bottom + 1
+            : this.headerRange.right + 1;
+
+          if (indexArray.has(resindex)) continue;
+          else {
+            indexArray.add(resindex);
+            this.draw_hover_helper_area(type, resindex);
+          }
+        }
+      }
+    },
+    draw_hover_helper_area(type, index) {
+      var helper = d3
+        .select("#hover-helper-container")
+        .append("rect")
+        .attr("class", "hover-helper")
+        .style("fill", "#FFEC8B")
+        .style("fill-opacity", "30%");
+
+      if (type == "row") {
+        helper
+          .attr("x", this.markWidth)
+          .attr("y", this.markHeight + this.heightRangeList[index])
+          .attr("width", this.widthRangeList[this.widthRangeList.length - 1])
+          .attr(
+            "height",
+            this.heightRangeList[index + 1] - this.heightRangeList[index]
+          );
+      } else {
+        helper
+          .attr("x", this.markWidth + this.widthRangeList[index])
+          .attr("y", this.markHeight)
+          .attr(
+            "width",
+            this.widthRangeList[index + 1] - this.widthRangeList[index]
+          )
+          .attr(
+            "height",
+            this.heightRangeList[this.heightRangeList.length - 1]
+          );
+      }
+    },
+
+    before_header_interaction(id, isRowHeader, name, times, layer) {
+      if (this.selectedArea.top != null) {
+        this.clear_selected_cell(true);
+        this.hide_recommend_element();
+        return;
+      }
+
+      let self = this;
+      // delete other helpers
+      d3.select("#interaction-helper").remove();
+      d3.select("#interaction-helper-line").remove();
+
+      this.selectedHeader = { name: name, times: times };
+      // add a new helper
+      var rect = d3.select("#" + id).select("rect");
+      // var text = d3.select("#" + id).select("text");
+      var text = d3.select("#" + id).select("foreignObject");
+      var tablesvg = d3.select(".table-view-svg");
+      var helper = tablesvg.append("g").attr("id", "interaction-helper");
+      helper
+        .append("rect")
+        .attr("x", rect.attr("x"))
+        .attr("y", rect.attr("y"))
+        .attr("width", rect.attr("width"))
+        .attr("height", rect.attr("height"))
+        .style("fill", "DodgerBlue")
+        .style("fill-opacity", "20%")
+        .style("cursor", "move");
+      // helper
+      //   .append("text")
+      //   .attr("x", text.attr("x"))
+      //   .attr("y", text.attr("y"))
+      //   .text(text.text())
+      //   .style("fill-opacity", "60%")
+      //   .style("cursor", "move")
+      //   .style("font-family", "Helvetica, Tahoma, Arial")
+      //   .style("-moz-user-select", "none")
+      //   .style("-webkit-user-select", "none")
+      //   .style("-ms-user-selec", "none")
+      //   .style("user-select", "none");
+      // helper
+      //   .append("foreignObject")
+      //   .attr("x", text.attr("x"))
+      //   .attr("y", text.attr("y"))
+      //   // .text(text.text())
+      //   .style("fill-opacity", "60%")
+      //   .style("cursor", "move")
+      //   .style("font-family", "Helvetica, Tahoma, Arial")
+      //   .style("-moz-user-select", "none")
+      //   .style("-webkit-user-select", "none")
+      //   .style("-ms-user-selec", "none")
+      //   .style("user-select", "none");
+      var guideline = tablesvg
+        .append("line")
+        .attr("id", "interaction-helper-line")
+        .style("stroke", "CornflowerBlue");
+
+      // add drag event
+      if (!isRowHeader) {
+        const drag = d3
+          .drag()
+          .on("drag", function (d) {
+            guideline.style("stroke-width", "2px");
+            d3.select(this).attr("transform", `translate(${d.x}, ${d.y})`);
+            
+            // 打表
+            if (self.selectedTabularData[2][0].value == "Nintendo" && self.hasTransposed && layer == 1) {
+              guideline.attr("y1", self.markHeight)
+                .attr("y2", self.markHeight + self.heightRangeList[self.headerRange.bottom + 1])
+
+              var inf = self.colHeader[layer].get(name)
+              var span = inf.children[times].length
+              var istart = inf.range[times].start 
+              var iend = inf.range[times].end 
+              var sstart = istart == 0 ? self.headerRange.right+1 : istart - span + self.headerRange.right+1
+              var send = iend + span + self.headerRange.right+1 + 1> self.widthRangeList.length-1 ? self.widthRangeList.length-1 : iend + span + self.headerRange.right+1 + 1
+              if (d.x < 0) {  // chg left
+                guideline.attr("x1", self.markWidth + self.widthRangeList[sstart])
+                  .attr("x2", self.markWidth + self.widthRangeList[sstart])
+              }
+              else {
+                guideline.attr("x1", self.markWidth + self.widthRangeList[send])
+                  .attr("x2", self.markWidth + self.widthRangeList[send])
+              }
+            }
+
+            else if (d.y > self.cellHeight && d.x < 0 && layer == self.headerRange.bottom) {
+              guideline.attr("x1", self.markWidth + self.widthRangeList[self.headerRange.right + 1])
+                .attr("x2", self.markWidth + self.widthRangeList[self.headerRange.right + 1])
+                .attr("y1", self.markHeight + self.heightRangeList[self.headerRange.bottom + 1])
+                .attr("y2", self.markHeight + self.heightRangeList[self.heightRangeList.length - 1]);
+            } 
+            else {
+              guideline
+                .attr(
+                  "x1",
+                  self.markWidth +
+                    self.widthRangeList[self.headerRange.right + 1]
+                )
+                .attr(
+                  "x2",
+                  self.markWidth +
+                    self.widthRangeList[self.widthRangeList.length - 1]
+                );
+              if (d.y < 0) {
+                var guidelayer = layer - 1 < 0 ? 0 : layer - 1;
+                guideline
+                  .attr(
+                    "y1",
+                    self.markHeight + self.heightRangeList[guidelayer]
+                  )
+                  .attr(
+                    "y2",
+                    self.markHeight + self.heightRangeList[guidelayer]
+                  );
+              } 
+              else {
+                var guidelayer = layer + 1 > self.headerRange.bottom ? self.headerRange.bottom : layer + 1;
+                guideline
+                  .attr(
+                    "y1",
+                    self.markHeight + self.heightRangeList[guidelayer + 1]
+                  )
+                  .attr(
+                    "y2",
+                    self.markHeight + self.heightRangeList[guidelayer + 1]
+                  );
+              }
+            }
+          })
+          .on("end", function (d) {
+          // 打表
+           if (self.selectedTabularData[2][0].value == "Nintendo" && self.hasTransposed && layer == 1) {
+              if (d.x < 0) {  // chg left
+                self.transform_chg_pos(name, times, self.colHeader, layer, true, false)
+              }
+              else if (d.x > 0) {
+                self.transform_chg_pos(name, times, self.colHeader, layer, false, false)
+              }
+            }
+
+            else if (d.y > self.cellHeight && d.x < 0 && layer == self.headerRange.bottom) {
+              self.transform_unnamed(
+                name,
+                self.colHeader,
+                self.rowHeader,
+                false
+              )
+            } 
+            else {
+              if (d.y > 0) {
+                self.transform_swap(name, self.colHeader, false, false);
+              } else if (d.y < 0) {
+                self.transform_swap(name, self.colHeader, true, false);
+              } else {
+                // self.handle_transform_linear_or_stacked(name, times, 'avg')
+              }
+            }
+
+            d3.select(this).remove();
+            d3.select("#interaction-helper-line").remove();
+          });
+        helper.datum({ y: 0, dy: 0, x: 0, dx: 0 }).call(drag);
+      } 
+      
+      else {
+        const drag = d3
+          .drag()
+          .on("drag", function (d) {
+            guideline
+              .style("stroke-width", "2px")
+              .attr(
+                "y1",
+                self.markHeight +
+                  self.heightRangeList[self.headerRange.bottom + 1]
+              )
+              .attr(
+                "y2",
+                self.markHeight +
+                  self.heightRangeList[self.heightRangeList.length - 1]
+              );
+            d3.select(this).attr("transform", `translate(${d.x}, ${d.y})`);
+
+            // 打表
+            // if (self.selectedTabularData[2][0].value == "Nintendo" && !self.hasTransposed && layer == 1 &&
+            //   (layer == self.headerRange.right && d.x >= 0 && d.y!=0
+            //     || layer == 0 && d.x <= 0 && d.y!=0 || d.y >= self.cellHeight/2  || d.y <= -1 * self.cellHeight/2)
+            // ) {
+            if (self.selectedTabularData[2][0].value == "Nintendo" && !self.hasTransposed && layer == 1) {
+              guideline.attr("x1", self.markWidth)
+                .attr("x2", self.markWidth + self.widthRangeList[self.headerRange.right+1])
+
+              var inf = self.rowHeader[layer].get(name)
+              var span = inf.children[times].length
+              var istart = inf.range[times].start 
+              var iend = inf.range[times].end 
+              var sstart = istart == 0 ? self.headerRange.bottom+1 : istart - span + self.headerRange.bottom+1
+              var send = iend + span + self.headerRange.bottom+1 + 1> self.heightRangeList.length-1 ? self.heightRangeList.length-1 : iend + span + self.headerRange.bottom+1 + 1
+
+              if (d.y < 0) {  // chg up
+                guideline.attr("y1", self.markHeight + self.heightRangeList[sstart])
+                  .attr("y2", self.markHeight + self.heightRangeList[sstart])
+              }
+              else {
+                guideline.attr("y1", self.markHeight + self.heightRangeList[send])
+                  .attr("y2", self.markHeight + self.heightRangeList[send])
+              }
+            }
+
+            else if (d.x > self.cellWidth && d.y < 0 && layer == self.headerRange.right) {
+              guideline
+                .attr(
+                  "x1",
+                  self.markWidth +
+                    self.widthRangeList[self.headerRange.right + 1]
+                )
+                .attr(
+                  "x2",
+                  self.markWidth +
+                    self.widthRangeList[self.widthRangeList.length - 1]
+                )
+                .attr(
+                  "y1",
+                  self.markHeight +
+                    self.heightRangeList[self.headerRange.bottom + 1]
+                )
+                .attr(
+                  "y2",
+                  self.markHeight +
+                    self.heightRangeList[self.headerRange.bottom + 1]
+                );
+            } 
+            else {
+              if (d.x < 0) {
+                var guidelayer = layer - 1 < 0 ? 0 : layer - 1;
+                guideline
+                  .attr("x1", self.markWidth + self.widthRangeList[guidelayer])
+                  .attr("x2", self.markWidth + self.widthRangeList[guidelayer]);
+              } else {
+                var guidelayer = layer + 1 > self.headerRange.right? self.headerRange.right
+                    : layer + 1;
+                guideline
+                  .attr(
+                    "x1",
+                    self.markWidth + self.widthRangeList[guidelayer + 1]
+                  )
+                  .attr(
+                    "x2",
+                    self.markWidth + self.widthRangeList[guidelayer + 1]
+                  );
+              }
+            }
+          })
+          .on("end", function (d) {
+            // 打表
+            if (self.selectedTabularData[2][0].value == "Nintendo" && !self.hasTransposed && layer == 1) {
+              if (d.y < 0) {  // chg up
+                self.transform_chg_pos(name, times, self.rowHeader, layer, true, false)
+              }
+              else if (d.y > 0){
+                self.transform_chg_pos(name, times, self.rowHeader, layer, false, false)
+              }
+            }
+
+            else if (d.x > self.cellWidth && d.y < 0 && layer == self.headerRange.right) {
+              self.transform_unnamed(
+                name,
+                self.rowHeader,
+                self.colHeader,
+                true
+              );
+            } 
+            else {
+              if (d.x > 0) {
+                self.transform_swap(name, self.rowHeader, false, true);
+              } else if (d.x < 0) {
+                self.transform_swap(name, self.rowHeader, true, true);
+              } else {
+                // self.handle_transform_linear_or_stacked(name, times, 'sum')
+              }
+            }
+            d3.select(this).remove();
+            d3.select("#interaction-helper-line").remove();
+          });
+        helper.datum({ x: 0, dx: 0, y: 0, dy: 0 }).call(drag);
+      }
+    },
+
+    force_update_tableview() {
+      this.$forceUpdate()
+    }
+  },
+
+  watch: {
+    currentFigIDList: function (newVal, oldVal){
+      console.trace("currentFigIDList_changed", newVal, oldVal);
+    },
+    displayMode: function () {},
+    // Remember to use "!this.widthChangeSignal" or "!this.heightChangeSignal" when changing width or height
+    widthChangeSignal: function () {
+      this.cal_range_list(this.columnWidthList, "width");
+    },
+    heightChangeSignal: function () {
+      this.cal_range_list(this.rowHeightList, "height");
+    },
+    markWidthChangeSignal: function () {
+      this.cal_range_list(this.markColumnWidthList, "mark width");
+    },
+    markHeightChangeSignal: function () {
+      this.cal_range_list(this.markRowHeightList, "mark height");
+    },
+    colHeader: function () {
+      for (var i = 0; i < this.colHeader.length; i++) {
+        for (var item of this.colHeader[i].values()) {
+          item.range = [];
+        }
+      }
+      cal_header_range(this.colHeader);
+    },
+    rowHeader: function () {
+      for (var i = 0; i < this.rowHeader.length; i++) {
+        for (var item of this.rowHeader[i].values()) {
+          item.range = [];
+        }
+      }
+      cal_header_range(this.rowHeader);
+    },
+    num2seq: {
+      handler() {
+        console.log(this.num2seq);
+      },
+      deep: true,
+    },
+    // prioritySliderValue: {
+    //   // deep: true,
+    //   // handler: function (data) {
+    //   //   // this.hide_recommendation_area();
+    //   //   var direct = this.directionSelectValue
+    //   //   if (direct == "row") {
+    //   //     this.rowPriorityRange = data
+    //   //   }
+    //   //   else {
+    //   //     this.colPriorityRange = data
+    //   //   }
+
+    //   //   this.draw_recommendation_area()
+    //   //   // var prefix = "#recommend-helper-"
+    //   //   // var type = this.typeSelectValue
+    //   //   // if (type == "subtree")  prefix += "tree-"
+    //   //   // var name
+
+    //   //   // if (direct.length == 0) {
+    //   //   //   return;
+    //   //   // } else if (direct.length == 2) {
+    //   //   //   prefix += "both";
+    //   //   // } else {
+    //   //   //   if (direct[0] == "row") prefix += "row";
+    //   //   //   else if (direct[0] == "column") prefix += "col";
+    //   //   // }
+
+    //   //   // for (var i = min; i <= max; i++) {
+    //   //   //   name = prefix + "-" + i;
+    //   //   //   d3.selectAll(name).style("visibility", "visible");
+    //   //   // }
+
+    //   //   if (
+    //   //     this.selectedArea.top != null &&
+    //   //     this.selectedArea.top == this.selectedArea.bottom &&
+    //   //     this.selectedArea.left == this.selectedArea.right
+    //   //   ) {
+    //   //     this.transmit_unit_recommendation_to_vis();
+    //   //   }
+    //   // },
+    // },
+    // directionSelectValue: {
+    //   // deep: true,
+    //   // handler: function (data) {
+    //   //   if (data == "row") {
+    //   //     this.prioritySliderValue = this.rowPriorityRange
+    //   //     this.typeSelectValue = this.rowType
+    //   //   }
+    //   //   else {
+    //   //     this.prioritySliderValue = this.colPriorityRange
+    //   //     this.typeSelectValue = this.colType
+    //   //   }
+    //   //   // this.hide_recommendation_area();
+    //   //   // var slider = this.prioritySliderValue;
+    //   //   // var min = slider[0],
+    //   //   //   max = slider[1];
+    //   //   // var prefix = "#recommend-helper-"
+    //   //   // var type = this.typeSelectValue
+    //   //   // if (type == "subtree")  prefix += "tree-"
+    //   //   // var name
+
+    //   //   // if (data.length == 0) {
+    //   //   //   return;
+    //   //   // } else if (data.length == 2) {
+    //   //   //   prefix += "both";
+    //   //   // } else {
+    //   //   //   if (data[0] == "row") prefix += "row";
+    //   //   //   else if (data[0] == "column") prefix += "col";
+    //   //   //   max = max > 3 ? 3 : max;
+    //   //   // }
+
+    //   //   // for (var i = min; i <= max; i++) {
+    //   //   //   name = prefix + "-" + i;
+    //   //   //   d3.selectAll(name).style("visibility", "visible");
+    //   //   // }
+
+    //   //   // if (
+    //   //   //   this.selectedArea.top != null &&
+    //   //   //   this.selectedArea.top == this.selectedArea.bottom &&
+    //   //   //   this.selectedArea.left == this.selectedArea.right
+    //   //   // ) {
+    //   //   //   this.transmit_unit_recommendation_to_vis();
+    //   //   // }
+    //   // },
+    // },
+    // typeSelectValue: {
+    // //   deep: true,
+    // //   handler: function (data) {
+    // //     // this.hide_recommendation_area();
+    // //     // var slider = this.prioritySliderValue
+    // //     // var min = slider[0], max = slider[1]
+    // //     // var direct = this.directionSelectValue
+    // //     // var prefix = "#recommend-helper-"
+    // //     // if (data == "subtree")  prefix += "tree-"
+    // //     // var name
+
+    // //     // if (direct.length == 0) {
+    // //     //   return;
+    // //     // } else if (direct.length == 2) {
+    // //     //   prefix += "both";
+    // //     // } else {
+    // //     //   if (direct[0] == "row") prefix += "row";
+    // //     //   else if (direct[0] == "column") prefix += "col";
+    // //     // }
+
+    // //     // for (var i = min; i <= max; i++) {
+    // //     //   name = prefix + "-" + i;
+    // //     //   d3.selectAll(name).style("visibility", "visible");
+    // //     // }
+
+    // //     var direct = this.directionSelectValue
+    // //     if (direct == "row") {
+    // //       this.rowType = data
+    // //     }
+    // //     else {
+    // //       this.colType = data
+    // //     }
+
+    // //     this.draw_recommendation_area()
+
+    // //     if (
+    // //       this.selectedArea.top != null &&
+    // //       this.selectedArea.top == this.selectedArea.bottom &&
+    // //       this.selectedArea.left == this.selectedArea.right
+    // //     ) {
+    // //       this.transmit_unit_recommendation_to_vis();
+    // //     }
+    // //   },
+    // },
+  },
+
+  beforeMount: function () {
+    var dataobj = sysDatasetObj.selectedTabularDataObj
+    // console.log("beforeMount dataobj", dataobj)
+    if (dataobj.hasOwnProperty("encoding")) {// 如果读取的是rl结果，则记录encoding值
+      this.RLEncodingList = dataobj["encoding"]
+      // console.log("RLEncoding_list", this.RLEncodingList)
+      // if (this.RLEncodingList == null)
+      //   console.error('impossible RLEncodingList')
+    }
+    else {
+      this.RLEncodingList = null
+      // console.error('impossible beforeMount dataobj')
+    }
+    console.log("dataobjdataobj", dataobj);
+
+    this.selectedTabularData = dataobj["content"];
+    this.headerDistribution = new Map();
+    this.valueDistribution = new Map();
+    this.num2header = new Map();
+    this.header2num = new Map();
+    this.currentAutoVisNumber = -1,  // 当前的渲染rl序列号
+    this.selectedAutoVisNumber = -1, // 用户选择的渲染rl序列号
+    this.currentFigIDList = []
+
+    // set column width to be the same
+    var row = this.selectedTabularData[0];
+    var item;
+    for (item in row) {
+      var lengthList = row[item].length
+      var len
+      for (len in lengthList) {
+        this.columnWidthList.push(this.cellWidth);
+        this.markColumnWidthList.push(this.cellWidth);
+      }
+    }
+
+    var rcount = this.selectedTabularData.length;
+    for (var i = 0; i < rcount; i++) {
+      this.rowHeightList.push(this.cellHeight);
+      this.markRowHeightList.push(this.cellHeight);
+    }
+
+    var rindex;
+    for (rindex in this.selectedTabularData) {
+      var cindex;
+      var r = [],
+        rvalue = [];
+      for (cindex in this.selectedTabularData[rindex]) {
+        var item = this.selectedTabularData[rindex][cindex];
+        var range = { start: item.start, end: item.end };
+        r.push(range);
+        rvalue.push(item.value);
+      }
+      this.rowDistributionList.push(r);
+      this.dataValueList.push(rvalue);
+    }
+
+    // automatically fix header
+    // range-right
+    for (var i = 0; i < this.selectedTabularData[0].length; i++) {
+      if (
+        this.selectedTabularData[0][i].value != "None" &&
+        this.selectedTabularData[0][i].value != "" &&
+        this.selectedTabularData[0][i].value != " "
+      ) {
+        this.headerRange.right = this.selectedTabularData[0][i].start - 1;
+        break;
+      }
+    }
+    // range-bottom
+    for (var i = 0; i < this.selectedTabularData.length; i++) {
+      if (
+        this.selectedTabularData[i][0].value != "None" &&
+        this.selectedTabularData[i][0].value != "" &&
+        this.selectedTabularData[i][0].value != " "
+      ) {
+        this.headerRange.bottom = i - 1;
+        break;
+      }
+    }
+    this.headerFixedFlag.row = true;
+    this.headerFixedFlag.column = true;
+
+    this.colHeader = [];
+    get_column_header(
+      this.headerIndex,
+      this.colHeaderIndex,
+      this.colHeader,
+      this.headerRange,
+      this.rowDistributionList,
+      this.dataValueList,
+      this.headerDistribution,
+      this.header2num,
+      this.num2header
+    );
+
+    this.rowHeader = [];
+    get_row_header(
+      this.headerIndex,
+      this.rowHeaderIndex,
+      this.rowHeader,
+      this.headerRange,
+      this.rowHeightList,
+      this.dataValueList,
+      this.headerDistribution,
+      this.header2num,
+      this.num2header
+    );
+    console.log("get_row_headerget_row_header", this.headerIndex,
+      this.rowHeaderIndex,
+      this.rowHeader,
+      this.headerRange,
+      this.rowHeightList,
+      this.dataValueList,
+      this.headerDistribution,
+      this.header2num,
+      this.num2header);
+
+    this.num2seq = new Map();
+    this.seq2num = new Map();
+    get_cell_sequence(
+      this.headerRange,
+      this.rowHeightList,
+      this.columnWidthList,
+      this.dataValueList,
+      this.colHeader,
+      this.rowHeader,
+      this.num2seq,
+      this.seq2num,
+      this.valueIndex
+    );
+
+    this.valueIndex = this.num2seq.size;
+    this.clear_selected_cell();
+    // this.$emit("changeHeaderFixed", true);
+
+    // this.selectedArea = {top:this.headerRange.bottom+1, left:this.headerRange.right+1, bottom:this.headerRange.bottom+1, right:this.headerRange.right+1}
+
+    this.cal_range_list(this.columnWidthList, "width");
+    this.cal_range_list(this.rowHeightList, "height");
+    this.cal_range_list(this.markColumnWidthList, "mark width");
+    this.cal_range_list(this.markRowHeightList, "mark height");
+  },
+
+  mounted: function () {
+    let self = this
+    this.hide_recommend_element();
+    // console.log("this.selectedTabularData", this.selectedTabularData);
+    // console.log("this.columnWidthList", this.columnWidthList);
+    // console.log("this.rowHeightList", this.rowHeightList);
+    // console.log("this.rowDistributionList", this.rowDistributionList);
+    // console.log("this.widthRangeList", this.widthRangeList);
+    // console.log("this.heightRangeList", this.heightRangeList);
+    // console.log("this.dataValueList", this.dataValueList);
+
+    // this.$bus.$on("update-selected-dataset", () => {
+    //   self.selectedTabularData = sysDatasetObj.selectedTabularDataObj["content"]
+    //   console.log('selectedTabularData', self.selectedTabularData)
+    //   self.$forceUpdate()
+    //   self.viewKey = (self.viewKey + 1) % 2
+    //   console.log('')
+    // })
+    this.$bus.$on("remove-ins-marker", (id)=>{
+      d3.selectAll("#ins-marker-" + id).remove();
+      // console.log("remove-ins-marker+", id);
+    });
+    // this.$bus.$on("alter_update_vis_on", (item)=>{
+    //   console.log("alter_update_vis-on", item);
+    //   this.update_list_and_fid(item);
+    //   this.auto_visualize_data(-1, item);
+    // });
+    this.$bus.$on("hp_get_vega_vis", (id, svgId, top, bottom, left, right, vis_type, direction)=>{
+      console.log("hp_get_vega_vis", top, bottom, left, right, vis_type)
+      var removeZero = false
+      if (vis_type == 'Skewness' || vis_type == 'Kurtosis') {
+        removeZero = true
+      }
+      var [visdata, metadata] = get_data_for_transmission(
+          top+this.headerRange.bottom+1,
+          bottom+this.headerRange.bottom+1,
+          left+this.headerRange.right+1,
+          right+this.headerRange.right+1,
+          this.headerRange,
+          this.valueDistribution,
+          this.seq2num,
+          this.rowHeader.length,
+          this.colHeader.length,
+          this.headerDistribution,
+          this.colHeader,
+          this.rowHeader,
+          removeZero,
+        );
+        // return [jsdata, metadata];
+        // console.log("hp_get_vega_vis_metadata", metadata);
+        this.$bus.$emit("embed-id-chat", id, svgId, visdata, metadata, vis_type, direction);
+    });
+    this.$bus.$on("hp_get_unit_vis", (id, svgId, top, bottom, left, right, vis_type, direction)=>{
+      console.log("hp_get_unit_vis", top, bottom, left, right)
+      let vis = [];
+      for (var x=top; x<=bottom; x++) {
+        for (var y=left; y<=right; y++) {
+          var l1 = x-this.headerRange.bottom-1;
+          var l2 = y-this.headerRange.right-1;
+          if(l1 < 0)
+            l1 = 0;
+          if(l2 < 0)
+            l2 = 0;
+          // console.log("hp_get_unit_vis-value-pre", l1, l2, this.valueDistribution, this.seq2num)
+          // var value = get_unit_data_for_transmission(
+          //   x-this.headerRange.bottom-1, y-this.headerRange.right-1, this.valueDistribution, this.seq2num)
+          var value = get_unit_data_for_transmission(
+            l1, l2, this.valueDistribution, this.seq2num)
+          // console.log("hp_get_unit_vis-value", value)
+          var pos = get_pos_for_transmission(
+            x,
+            x,
+            y,
+            y,
+            this.markWidth,
+            this.markHeight,
+            this.widthRangeList,
+            this.heightRangeList
+          );
+          var obj = {position: pos, value: value, priority: 0};
+          vis.push(obj);
+        }
+      }
+      var visdata = JSON.stringify(vis)
+
+      var meta = { x: { range: 1 }, y: { range: 1 } };
+      var metadata = JSON.stringify(meta);
+      // return [visdata, metadata];
+      // this.$bus.$emit("auto-visualize-data", selectedPos, visdata, metadata, config);
+      console.log("idididid", id, "svgId", svgId, "visdata", visdata, "metadata", metadata, "vis_type", vis_type, "direction", direction)
+      this.$bus.$emit("embed-id-chat", id, svgId, visdata, metadata, vis_type, direction);
+    }),
+
+    this.$bus.$on("apply-config", (data) => {
+      // console.log("apply-configapply-config", data);
+      // if (data == null) {
+      //  console.log("apply-null");
+      // }
+      // console.log("apply-config-0");
+      if (
+        !(
+          this.selectedArea.left == this.selectedArea.right &&
+          this.selectedArea.top == this.selectedArea.bottom
+        )
+      ) {
+        // console.log("apply-config-1");
+        this.transmit_recommendation_to_vis();
+        // console.log("not single unit");
+        // this.show_recommend_element();
+        // this.cal_recommendation_data(
+        //   this.selectedArea.top - this.headerRange.bottom - 1,
+        //   this.selectedArea.bottom - this.headerRange.bottom - 1,
+        //   this.selectedArea.left - this.headerRange.right - 1,
+        //   this.selectedArea.right - this.headerRange.right - 1
+        // );
+        // console.log("apply-config-11");
+        this.clear_selected_cell(false);
+        // console.log("apply-config-111");
+      } else if (
+        this.selectedArea.top != null &&
+        this.selectedArea.left == this.selectedArea.right &&
+        this.selectedArea.top == this.selectedArea.bottom
+      ) {
+        // console.log("apply-config-2");
+        this.hide_recommend_element();
+        this.clear_selected_cell(true);
+      }
+      // console.log("apply-config-3");
+    });
+
+    this.$bus.$on("cancel-dialog", (data) => {
+      this.clear_recommendation_area();
+    });
+
+    this.$bus.$on("confirm-dialog", (data) => {
+      // console.log("confirm-dialog-TableView");
+      this.clear_recommendation_area();
+    });
+
+    // Excplicitly use this instead of select canvas to cancel table selection.
+    this.$bus.$on("clear-selectedCell", () => {
+      // console.log("remove selections of tableview");
+      this.clear_selected_cell(true);
+      this.hide_recommend_element();
+    });
+
+    this.$bus.$on("hover-field", (fieldname) => {
+      this.handle_hover_field(fieldname);
+    });
+
+    this.$bus.$on("unhover-field", () => {
+      d3.selectAll(".hover-helper").remove();
+    });
+    
+    this.$bus.$on("clear-AllTableView", () => {
+      this.clear_selected_cell(true);
+      this.clear_selected_header();
+      d3.selectAll(".table-view-svg").remove();
+      // d3.selectAll("#insight-arrow-container").remove();
+      d3.selectAll("#insight-marker-corner-container").selectAll('line').remove();
+      d3.selectAll("#insight-marker-container").selectAll('rect').remove();
+      // d3.selectAll(".table-view-svg-container").remove();
+      d3.selectAll(".recommend-area").remove();
+      // d3.selectAll("#recommendation-area-container").remove();
+      d3.selectAll("#interaction-helper").remove();
+      d3.selectAll("#interaction-helper-line").remove();
+      d3.selectAll(".hover-helper").remove();
+    });
+    
+
+    // visView remotely send value
+    this.$bus.$on("transmit-prioritySliderValue", (data) => {
+      this.prioritySliderValue = data;
+      var direct = this.directionSelectValue
+        if (direct == "row") {
+          this.rowPriorityRange = data
+        }
+        else {
+          this.colPriorityRange = data
+        }
+
+        this.draw_recommendation_area()
+
+
+        //hp注释
+        // if (
+        // this.selectedArea.top != null &&
+        // this.selectedArea.top == this.selectedArea.bottom &&
+        // this.selectedArea.left == this.selectedArea.right
+        // ) {
+        //       console.log("transmit-unit_recommendation_to_vis-transmit-prioritySliderValue");
+        //   this.transmit_unit_recommendation_to_vis();
+        // }
+
+    });
+    
+    this.$bus.$on("transmit-directionSelectValue", (data) => {
+      this.directionSelectValue = data;
+      if (data == "row") {
+        this.prioritySliderValue = this.rowPriorityRange
+        this.typeSelectValue = this.rowType
+      }
+      else {
+        this.prioritySliderValue = this.colPriorityRange
+        this.typeSelectValue = this.colType
+      }
+      this.$bus.$emit("transmit-value-after-changing-recommend-direction", this.prioritySliderValue, this.typeSelectValue)
+    });
+    
+    this.$bus.$on("transmit-typeSelectValue", (data) => {
+      this.typeSelectValue = data;
+      var direct = this.directionSelectValue
+      if (direct == "row") {
+        this.rowType = data
+      }
+      else {
+        this.colType = data
+      }
+
+      this.draw_recommendation_area()
+
+
+      //hp注释
+      // if (
+      //   this.selectedArea.top != null &&
+      //   this.selectedArea.top == this.selectedArea.bottom &&
+      //   this.selectedArea.left == this.selectedArea.right
+      // ) {
+      //       console.log("transmit-unit_recommendation_to_vis-transmit-typeSelectValue");
+      //   this.transmit_unit_recommendation_to_vis();
+      // }
+    });
+
+    this.$bus.$on("change-zoom", (value) => {
+      console.log("change-zoom", value);
+      if (value) {
+        this.zoomScale = value / 100
+        // this.handle_zoom_scale(value);
+      } 
+      else {
+        if (this.isZoomOut) {
+          this.handle_zoom_in();
+        } else {
+          this.handle_zoom_out();
+        }
+      }
+    });
+
+    this.$bus.$on("change-current-auto-vis-num", (val) => {
+      // if (this.selectedAutoVisNumber != val) {
+      //   this.selectedAutoVisNumber = val
+      //   this.handle_rl_num_change()
+      // }
+      this.selectedAutoVisNumber = val
+      this.handle_rl_num_change()
+    });
+
+    this.$bus.$on("auto-gen-new-fig-id", (id) => {
+      console.log("auto-gen-new-fig-id", id)
+      this.currentFigIDList.push(id);
+     if (this.RLEncodingList !== null && this.currentFigIDList !== null) 
+      console.log("new_rl_list", this.RLEncodingList.length, "new_fid_list", this.currentFigIDList.length);
+    });
+
+    this.$bus.$on("TableView-add-user-icon", () => {
+      this.$bus.$emit("RLPanel-add-user-icon-unit", "Unit", {"top":this.selectedArea.top - this.headerRange.bottom - 1,
+                    "bottom":this.selectedArea.bottom - this.headerRange.bottom - 1,
+                    "left":this.selectedArea.left - this.headerRange.right - 1,
+                    "right":this.selectedArea.right - this.headerRange.right - 1}, this.recommendData);
+    });
+
+    this.$bus.$on("clear-currentFigIDList", (val, insight_type=null) => {
+      console.log("clear-currentFigIDList", val, insight_type);
+      if (val != null && val != undefined && val != 0){
+        this.currentFigIDList = this.currentFigIDList.slice(0, val);
+        this.RLEncodingList = this.RLEncodingList.slice(0, val);
+        // console.error("valvalvalvalvalval", val);
+        // console.error("currentFigIDListcurrentFigIDList", this.currentFigIDList.length);
+        // console.error("RLEncodingListRLEncodingList", this.RLEncodingList.length);
+      }
+      else{
+        this.currentFigIDList = [];
+        this.RLEncodingList = [];
+        // for (var i=0; i<this.currentFigIDList.length; i++) {
+        //   this.$bus.$emit("delete-rl-fig-id", this.currentFigIDList[i])  // 删除该figid对应的组
+        //   // todo删除对应的insight marker
+        //   d3.selectAll("#ins-marker-"+this.currentFigIDList[i]).remove();
+        //   // .style("display", "none");
+        //   // .style("display", "block");
+        // }
+        // // this.currentFigIDList = this.currentFigIDList.slice(0, this.selectedAutoVisNumber+1)
+        // console.log("clear-currentFigIDList", this.currentAutoVisNumber, this.selectedAutoVisNumber);
+        // this.currentAutoVisNumber = 0;
+        // this.selectedAutoVisNumber = 0;
+      }
+
+      if (insight_type != null){
+        // console.error("TableView-add-user-to-list", insight_type, this.RLEncodingList);
+        if (this.RLEncodingList == null)
+          this.RLEncodingList = [];
+        this.RLEncodingList.push(insight_type);
+        this.currentAutoVisNumber += 1;
+      }
+    });
+
+    this.$bus.$on("TableView-visualize-next-encoding", (next_encoding) => {
+      if (this.RLEncodingList == null)
+        this.RLEncodingList = [];
+      console.log("TableView-visualize-next-encoding", this.RLEncodingList, next_encoding);
+      this.RLEncodingList = this.RLEncodingList.concat(next_encoding);
+      console.log("TableView-visualize-next-encoding-after", this.RLEncodingList);
+      this.$bus.$emit("change-current-auto-vis-num", this.RLEncodingList.length - 1);
+    });
+
+    this.$bus.$on("TableView-alter_update_vis_on", (item, insightList, insight_is_user, insight_both_list)=>{
+      console.log("alter_update_vis-on", item, insightList, insight_is_user, insight_both_list);
+      this.update_list_and_fid(item, insightList, insight_is_user, insight_both_list);
+      this.auto_visualize_data(-1, item);
+    });
+
+    this.$bus.$on("TableView-remove-id", (id)=>{
+      console.log("TableView-remove-id", id);
+      let ok_pos = null;
+      var new_currentFigIDList = [];
+      for (let cur_p in this.currentFigIDList){
+        var cur_id = this.currentFigIDList[cur_p];
+        if (cur_id == id){
+          ok_pos = cur_p;
+          console.log("TableView-remove-id-ok");
+        }
+        else
+        new_currentFigIDList.push(cur_id);
+      }
+      console.log("TableView-remove-id.currentFigIDList", this.currentFigIDList.length);
+      if (ok_pos != null){
+        this.$bus.$emit("RLPanel-remove-pos", ok_pos);
+        this.currentFigIDList = new_currentFigIDList;
+        this.currentAutoVisNumber = new_currentFigIDList.length;
+      }
+      else
+        console.error("TableView-remove-id-not-ok", id, this.currentFigIDList);
+    });
+
+    // this.$bus.$on("TableView-add-user-to-list", (insight) => {
+    //   console.log("TableView-add-user-to-list", this.RLEncodingList, insight);
+    //   if (this.RLEncodingList == null)
+    //     this.RLEncodingList = [];
+    //   this.RLEncodingList.push(insight);
+    //   this.currentAutoVisNumber += 1;
+    // });
+
+    // this.$bus.$on("user-add-to-figlist", (insight, fid) => {
+    //   this.RLEncodingList.push(insight);
+    //   this.currentFigIDList.push(fid);
+    // });
+
+    // this.$bus.$on("update-RLEncodingList", (alternative_list) =>{
+    //   console.log("update-RLEncodingList", alternative_list)
+    //   console.log("this.RLEncodingList", this.RLEncodingList)
+    //   var new_rl_list = []
+    //   var type_haved = {}
+    //   for (var tmp of this.RLEncodingList){
+    //     console.log("tmptmp", tmp.hp_pos)
+    //     console.log("tmptmp", tmp.rec_list)
+    //     let judge = this.judge_merge()
+    //   }
+    // })
+    // if (this.RLEncodingList != null) {  // 若显示的是rl结果，则自动创建可视化
+    //   this.auto_visualize_data()
+    // }
+  },
+
+  computed: {
+    ...mapState(["displayMode"]),
+    // judge_merge(x1, y1, x2, y2, x3, y3, x4, y4){
+    //   if (Math.max(x1, x3) <= Math.min(x2, x4) && Math.max(y1, y3) <= Math.min(y2, y4))
+    //     return true;
+    //   return false;
+    // },
+    isMarkSelected() {
+      return (index, type) => {
+        if (this.selectedArea.top == null) return false;
+        if (type == "row") {
+          if (
+            index >= this.selectedArea.top &&
+            index <= this.selectedArea.bottom
+          ) {
+            return true;
+          } else {
+            return false;
+          }
+        } else {
+          if (
+            index >= this.selectedArea.left &&
+            index <= this.selectedArea.right
+          ) {
+            return true;
+          } else {
+            return false;
+          }
+        }
+      };
+    },
+    cal_column_header_position() {
+      return (value, times) => {
+        var rindex = this.headerDistribution.get(value).layer;
+        var start = this.colHeader[rindex].get(value).range[times].start;
+        var end = this.colHeader[rindex].get(value).range[times].end;
+
+        var curHeaderPos = { x: null, y: null, width: null, height: null };
+        curHeaderPos.x =
+          this.markWidth +
+          this.widthRangeList[this.headerRange.right + 1 + start];
+        curHeaderPos.y = this.markHeight + this.heightRangeList[rindex];
+        curHeaderPos.width =
+          this.widthRangeList[this.headerRange.right + 1 + end + 1] -
+          this.widthRangeList[this.headerRange.right + 1 + start];
+        curHeaderPos.height = this.rowHeightList[rindex];
+        return curHeaderPos;
+      };
+    },
+    cal_row_header_position() {
+      return (value, times) => {
+        var cindex = this.headerDistribution.get(value).layer;
+        var start = this.rowHeader[cindex].get(value).range[times].start;
+        var end = this.rowHeader[cindex].get(value).range[times].end;
+        // var span = this.rowHeader[cindex].get(value).range[times].end - this.rowHeader[cindex].get(value).range[times].start + 1
+
+        var curHeaderPos = { x: null, y: null, width: null, height: null };
+        curHeaderPos.x = this.markWidth + this.widthRangeList[cindex];
+        curHeaderPos.y =
+          this.markHeight +
+          this.heightRangeList[this.headerRange.bottom + 1 + start];
+        curHeaderPos.width = this.columnWidthList[cindex];
+        curHeaderPos.height =
+          this.heightRangeList[this.headerRange.bottom + 1 + end + 1] -
+          this.heightRangeList[this.headerRange.bottom + 1 + start];
+        return curHeaderPos;
+      };
+    },
+    cal_value_cell_position() {
+      return (seq) => {
+        var res = { row: null, col: null };
+        var colIndex = { start: 0, end: Infinity },
+          rowIndex = { start: 0, end: Infinity };
+        // column index
+        for (var i = 0; i < this.colHeader.length; i++) {
+          for (var item of this.colHeader[i]) {
+            var header = item[0];
+            if (seq.has(header)) {
+              var ranges = item[1].range;
+              for (var j = 0; j < ranges.length; j++) {
+                if (
+                  ranges[j].start >= colIndex.start &&
+                  ranges[j].end <= colIndex.end
+                ) {
+                  colIndex.start = ranges[j].start;
+                  colIndex.end = ranges[j].end;
+                  break;
+                }
+              }
+              break;
+            }
+          }
+        }
+        if (colIndex.start == colIndex.end) {
+          res.col = colIndex.start + this.headerRange.right + 1;
+        }
+
+        //row index
+        for (var i = 0; i < this.rowHeader.length; i++) {
+          for (var item of this.rowHeader[i]) {
+            var header = item[0];
+            if (seq.has(header)) {
+              var ranges = item[1].range;
+              for (var j = 0; j < ranges.length; j++) {
+                if (
+                  ranges[j].start >= rowIndex.start &&
+                  ranges[j].end <= rowIndex.end
+                ) {
+                  rowIndex.start = ranges[j].start;
+                  rowIndex.end = ranges[j].end;
+                  break;
+                }
+              }
+              break;
+            }
+          }
+        }
+        if (rowIndex.start == rowIndex.end) {
+          res.row = rowIndex.start + this.headerRange.bottom + 1;
+        }
+        var key = [rowIndex.start, colIndex.start].toString();
+        this.valueDistribution.set(key, seq);
+        return res;
+      };
+    },
+  },
+  beforeDestroy(){
+    this.$bus.$off("hp_get_vega_vis");
+    this.$bus.$off("hp_get_unit_vis");
+    this.$bus.$off("apply-config");
+    this.$bus.$off("confirm-dialog");
+    this.$bus.$off("clear-selectedCell");
+    this.$bus.$off("hover-field");
+    this.$bus.$off("unhover-field");
+    this.$bus.$off("clear-AllTableView");
+    this.$bus.$off("transmit-prioritySliderValue");
+    this.$bus.$off("transmit-directionSelectValue");
+    this.$bus.$off("transmit-typeSelectValue");
+    this.$bus.$off("change-zoom");
+    this.$bus.$off("change-current-auto-vis-num");
+    this.$bus.$off("auto-gen-new-fig-id");
+    // this.$bus.$off("alter_update_vis_on");
+    // this.$bus.$off("user-add-to-figlist");
+    this.$bus.$off("TableView-visualize-next-encoding");
+    // this.$bus.$off("TableView-add-user-to-list");
+    this.$bus.$off("remove-ins-marker");
+    this.$bus.$off("clear-currentFigIDList");
+    this.$bus.$off("TableView-add-user-icon");
+    this.$bus.$off("TableView-alter_update_vis_on");
+    this.$bus.$off("TableView-remove-id");
+  }
+};
+</script>
+
+<!-- Add "scoped" attribute to limit CSS to this component only -->
+<style scoped lang="less">
+@padding: 0.7rem;
+@toolbar-width: 5rem;
+// @transform-button-height: 2rem;
+@button-size: 3rem;
+.table-view {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  text {
+    font-family: Helvetica, Tahoma, Arial;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    cursor: cell;
+  }
+  .header-button-container {
+    text-align: center;
+  }
+  .toolbar {
+    height: 100%;
+    position: absolute;
+    width: @toolbar-width;
+    // padding-left: @padding;
+    background: white;
+    // align-items: center;
+    text-align: center;
+    border-right: 1px solid #cecece;
+    // overflow: hidden;
+    // .el-row {
+    //   height: 100%;
+    // }
+    // .el-col {
+    //   text-align: left;
+    //   height: 100%;
+    // }
+    .toolbar-label {
+      font-size: 80%;
+      user-select: none;
+      color: #707070;
+      // margin-bottom: 10*@padding;
+      // height: @transform-button-height;
+    }
+    .button {
+      font-size: 100%;
+      width: @button-size;
+      height: @button-size;
+      background-color: transparent;
+      background-repeat: no-repeat;
+      background-position: center;
+      border: none;
+      cursor: pointer;
+      user-select: none;
+      margin-top: 3 * @padding;
+    }
+    .button:hover {
+      background-color: #d3e1f0b6;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      user-select: none;
+    }
+    .drop-down-button {
+      font-size: 115%;
+      font-family: Tahoma, Arial;
+      color: #3e87cc;
+      cursor: pointer;
+      // margin-right:@padding;
+      padding-left: 6px;
+      padding-right: 6px;
+    }
+    .toolbar-vertical-separator {
+      border-left: 1px solid #cecece;
+      // height: @transform-button-height;
+      margin-right: 2 * @padding;
+      margin-left: @padding;
+      width: 4px;
+      user-select: none;
+    }
+    // .recommend-element {
+    //   display: inline;
+    // }
+
+    // // direction select
+    // /deep/.el-input__suffix {
+    //   transition: 0s;
+    // }
+    // /deep/.el-input.el-input--mini.el-input--suffix {
+    //   width: 155px;
+    // }
+    // /deep/.el-select.el-select--mini {
+    //   margin-right: 15px;
+    // }
+
+    // // priority slider
+    // .priority-slider {
+    //   margin-left: @padding;
+    //   margin-top: 2px;
+    //   position: relative;
+    //   width: 80%;
+    // }
+    // /deep/ .el-slider__bar {
+    //   background: #6ba8e2;
+    // }
+    // /deep/.el-slider__button {
+    //   width: 8px;
+    //   height: 8px;
+    //   border-radius: 50%;
+    //   transition: 0s;
+    // }
+  }
+
+  .table-view-svg-container {
+    position: absolute;
+    // height:100%;
+    // left: @toolbar-width + 1rem;
+    left: @padding;
+    right: 0%;
+    top: @padding;
+    bottom: @padding;
+    overflow: auto;
+    // margin-top:1%;
+    // margin-left:1%;
+    // margin-right:1%;
+    .table-view-svg {
+      position: absolute;
+      top: 0%;
+      left: 0%;
+      .table-mark {
+        fill: rgb(233, 233, 233);
+        stroke: lightslategrey;
+        stroke-width: 0.2px;
+        cursor: cell;
+      }
+      .selected-table-mark {
+        fill: rgb(213, 215, 218);
+        cursor: cell;
+      }
+      .selected-table-mark-text {
+        fill: steelblue;
+        font-size: 105%;
+        text-anchor: middle;
+      }
+      .chosen-table-mark {
+        fill: rgb(204, 231, 243);
+        cursor: cell;
+      }
+      .chosen-table-mark-text {
+        fill: steelblue;
+        font-size: 105%;
+        text-anchor: middle;
+      }
+      .hovered-table-mark {
+        fill: rgb(173, 199, 223);
+        cursor: pointer;
+      }
+      .hovered-table-mark-text {
+        cursor: pointer;
+      }
+      .column-mark-transparent-line {
+        fill: white;
+        fill-opacity: 0%;
+        stroke: none;
+        cursor: col-resize;
+      }
+      .row-mark-transparent-line {
+        fill: white;
+        fill-opacity: 0%;
+        stroke: none;
+        cursor: row-resize;
+      }
+      .table-mark-long-line {
+        stroke: black;
+        stroke-width: 0.4px;
+      }
+      .table-cell {
+        fill: white;
+        stroke: lightslategrey;
+        stroke-width: 0.2px;
+        cursor: cell;
+      }
+      .header-table-cell {
+        fill: rgb(245, 248, 250);
+        stroke: lightslategrey;
+        stroke-width: 0.2px;
+        cursor: cell;
+      }
+      .table-cell-text {
+        text-anchor: start;
+        // word-break: break-all !important;
+        // word-wrap: break-word !important;
+        // // white-space: pre-wrap !important; 
+        // overflow-wrap: break-word !important;
+      }
+      .table-mark-text {
+        font-size: 105%;
+        text-anchor: middle;
+      }
+      .selected-area {
+        stroke: steelblue;
+        fill: rgb(186, 219, 228);
+        fill-opacity: 20%;
+        stroke-width: 1.5px;
+        cursor: cell;
+      }
+      .highlight-line {
+        stroke: steelblue;
+        stroke-width: 1.5px;
+      }
+      .header-line {
+        stroke: rgb(43, 98, 134);
+        stroke-width: 0.5px;
+      }
+      #transparent-mask-for-choosing {
+        fill-opacity: 0%;
+        stroke: none;
+        cursor: cell;
+      }
+      .flip-list-move {
+        transition: transform 1s;
+      }
+    }
+  }
+}
+</style>
